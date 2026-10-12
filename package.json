@@ -1,0 +1,1 @@
+{"name":"sinking-island","version":"0.3.0","private":true,"main":"server.js","scripts":{"start":"node server.js","test":"node test.js"},"engines":{"node":">=18"},"dependencies":{"socket.io":"^4.7.5"},"devDependencies":{"socket.io-client":"^4.7.5"}}
