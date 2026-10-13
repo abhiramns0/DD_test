@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Drowning Dash</title>
 <meta name="description" content="Build a raft, outrun the sinking island and dodge crocodiles. Free to play solo or with friends.">
+<!-- GOOGLE ANALYTICS: paste your GA4 Measurement ID (G-XXXXXXXXXX) into the GA_ID constant near the END of this file (search for "GA_ID"). No other snippet is needed. -->
 <meta name="theme-color" content="#4fb4d6"><link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Drowning Dash">
@@ -147,6 +148,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #host{gap:12px}#host #hvis button{font-size:14px;padding:7px 16px}#host #hmodes{margin-top:4px}#host #hteams{margin-top:10px}
 .hdiv{width:min(70vw,300px);height:2px;background:rgba(255,255,255,.4);border-radius:2px;margin:16px 0 10px}
 #host #createRoom{margin-top:30px;font-size:clamp(22px,6.5vw,30px);padding:12px 36px;white-space:nowrap}#host #hback{margin-top:16px}#host button.inv{position:static;margin:26px auto 0}
+#lobby h1{margin-bottom:8px}#lobby .hdiv{margin:8px 0 4px}#lobby .lsec{gap:10px}#lobby #plist{margin-top:2px}#lobby #lmsg{font-size:18px;font-weight:800;margin:2px 0 0}#lobby .rc{margin-top:0}
+#lobby #startbtn{margin-top:16px;font-size:clamp(22px,6.5vw,30px);padding:12px 36px;white-space:nowrap}
+#revPlay,#revPlay:not(:disabled){opacity:1;animation:none}#revPlay:disabled{opacity:1}.pgive:disabled{opacity:.5}
+#install{padding:6px 6px 6px 16px;gap:10px;touch-action:manipulation}#install #instGo{padding:10px 18px;font-size:14px}
+#install #instNo{width:44px;height:44px;border-radius:50%;padding:0;font-size:20px;line-height:1;background:rgba(39,64,90,.12);color:var(--ink)}
 </style>
 <script>window.SERVER_URL="";/* set to your Render URL if the client is hosted elsewhere (e.g. Vercel) */</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -181,14 +187,16 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <button class="inv" id="invHost">📨 INVITE FRIENDS</button></div>
 <div class="ov" id="settings" style="display:none"><h1 style="font-size:clamp(32px,9vw,54px)">SETTINGS</h1><p>YOUR NAME</p>
 <input id="pname" maxlength="14" placeholder="Player" autocomplete="off" style="width:min(78vw,280px);letter-spacing:1px;font-size:24px"><p class="hint">Shown to other players in rooms.</p>
-<button id="saveName">SAVE</button><button class="sec" id="setBack">BACK</button></div>
+<button id="saveName">SAVE</button><button class="sec" id="instBtn">📲 INSTALL APP</button><button class="sec" id="setBack">BACK</button></div>
 <div class="ov" id="store" style="display:none"><h1 style="font-size:clamp(32px,9vw,54px)">STORE</h1><div class="seg modes" id="stTabs"><button data-t="skins" class="on">SKINS</button><button data-t="scenery">SCENERY</button></div><div id="skGrid"></div><button class="sec" id="storeBack">BACK</button></div>
-<div class="ov" id="lobby" style="display:none">
+<div class="ov" id="lobby" style="display:none"><h1 style="font-size:clamp(30px,8vw,46px)">GAME ROOM</h1>
 <div class="rc"><span id="roomcode"></span><button class="sec" id="copy">COPY ROOM CODE</button></div>
 <div class="seg vis" id="vis"><button data-v="0">🔒 PRIVATE</button><button data-v="1">🌐 PUBLIC</button></div>
+<div class="hdiv"></div>
 <div class="lsec"><div class="seg modes" id="modes"><button data-m="coop">CO-OP</button><button data-m="tourney">TOURNAMENT</button><button data-m="last">END GAME</button></div>
 <div class="seg sub" id="tms"><button data-t="ffa">FREE-FOR-ALL</button><button data-t="teams">TEAMS</button></div>
 <p id="mdesc"></p></div>
+<div class="hdiv"></div>
 <div id="plist"></div><p id="lmsg"></p><button id="startbtn">START GAME</button></div>
 <div class="ov" id="endv" style="display:none"><h1 id="et">ISLAND SUNK</h1><p id="esub"></p><div id="plist2" style="display:flex;flex-direction:column;gap:6px;min-width:230px"></div>
 <button id="again">PLAY AGAIN</button><button class="sec" id="tolobby">RETURN TO LOBBY</button><p id="emsg"></p></div>
@@ -206,12 +214,13 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 </div><button class="sec" id="helpBack">BACK</button></div>
 <div class="pop" id="revive"><div class="pcard"><h2>Do you want to revive?</h2><button id="revPlay" disabled aria-label="Play to revive"><svg viewBox="0 0 140 140" aria-hidden="true"><circle class="rt" cx="70" cy="70" r="64"/><circle id="revRing" class="rp" cx="70" cy="70" r="64"/></svg><span>▶</span></button></div><button class="pgive" id="revGive">give up</button></div>
 <div class="pop" id="namePop"><div class="pcard"><h2>Welcome! Pick a player name</h2><input id="nameIn" maxlength="14" placeholder="Your name" autocomplete="off"><button class="pbtn" id="nameGo" disabled>LET’S GO</button></div></div>
+<div class="pop" id="instHelp"><div class="pcard"><h2>Install Drowning Dash</h2><p id="instSteps" style="margin:0;font-size:17px;line-height:1.4"></p><button class="pbtn" id="instOk">GOT IT</button></div></div>
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
-let W,H,dpr,A,A0=1,zoomK=1,zoomT=1;
-function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0);A0=Math.min(W/950,H/800);A=A0*zoomK}
+let W,H,dpr,A,A0=1,zoomK=1,zoomT=1,dprCap=2;
+function resize(){dpr=Math.min(devicePixelRatio||1,dprCap);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0);A0=Math.min(W/950,H/800);A=A0*zoomK}
 addEventListener('resize',resize);resize();
 // ===== audio =====
 // Two independent switches: 🔊 = game sound effects, 🎵 = background music + ocean ambience.
@@ -873,7 +882,7 @@ const netEl=$('net');
 const socket=io(SERVER,{transports:['websocket','polling']});
 const net=(ev,fn)=>socket.on(ev,(...a)=>{if(loss&&ev==='pos'&&Math.random()<loss)return;lag?setTimeout(()=>fn(...a),lag):fn(...a)});
 const send=(ev,d,ack)=>lag?setTimeout(()=>socket.emit(ev,d,ack),lag):socket.emit(ev,d,ack);
-function syncClock(){const t0=Date.now();socket.emit('pg',t0,ts=>{const rt=Date.now()-t0;ping=rt;const o=ts+rt/2-Date.now();offset=hasOff?offset*.7+o*.3:o;hasOff=true})}
+const clk=[];function syncClock(){const t0=Date.now();socket.emit('pg',t0,ts=>{const rt=Date.now()-t0,o=ts+rt/2-Date.now();clk.push({rt,o});if(clk.length>8)clk.shift();const b=clk.reduce((a,c)=>c.rt<a.rt?c:a);ping=ping?ping*.8+rt*.2:rt;offset=hasOff?offset+(b.o-offset)*.25:b.o;hasOff=true})} // NTP-style: trust the fastest round trips
 function saveSess(a){sess={code:a.code,id:a.id,tok:a.tok};try{sessionStorage.setItem('si',JSON.stringify(sess))}catch(e){}}
 function clearSess(){sess=null;try{sessionStorage.removeItem('si')}catch(e){}}
 try{sess=JSON.parse(sessionStorage.getItem('si')||'null')}catch(e){}
@@ -927,20 +936,15 @@ function renderBoard(){const b=$('board');
  const IC={COLLECTING:'🪵',BUILDING:'🔨',READY:'🚀',ESCAPED:'✅',ELIMINATED:'❌',LOST:'💧'};
  b.style.display='flex';
  b.innerHTML=board.slice().sort((a,c)=>c.sc-a.sc).map(t=>`<div class="br${t.id===myTid?' me':''}${t.st==='ELIMINATED'||t.st==='LOST'?' x':''}"><i style="background:${t.color}"></i><span>${t.id===myTid?'YOU':esc(t.name)}</span><em>${stages>1?'I'+t.stage:''}</em><b>${IC[t.st]||''}</b><u><s style="width:${t.prog}%"></s></u></div>`).join('')}
-net('pos',d=>{players.forEach(p=>{p.rvLeft=0;p.rvp=0});if(d.rv)d.rv.forEach(a=>{const p=players.get(a[0]);if(p){p.rvp=a[1];p.rvLeft=a[2];p.rvAt=performance.now()}});if(d.c)d.c.forEach(a=>{let q=crocs.get(a[0]);if(!q){q={x:a[1],y:a[2],w:0};crocs.set(a[0],q)}if(q.w===0&&a[5]>0){q.x=a[1];q.y=a[2]}q.tx=a[1];q.ty=a[2];q.vx=a[3];q.vy=a[4];q.w=a[5]});
+net('pos',d=>{players.forEach(p=>{p.rvLeft=0;p.rvp=0});if(d.rv)d.rv.forEach(a=>{const p=players.get(a[0]);if(p){p.rvp=a[1];p.rvLeft=a[2];p.rvAt=performance.now()}});if(d.c)d.c.forEach(a=>{let q=crocs.get(a[0]);if(!q){q={x:a[1],y:a[2],w:0};crocs.set(a[0],q)}if(q.w===0&&a[5]>0){q.x=a[1];q.y=a[2]}q.tx=a[1];q.ty=a[2];q.vx=a[3];q.vy=a[4];q.w=a[5];q.sT=d.t});
  d.p.forEach(a=>{const p=players.get(a[0]);if(!p)return;p.anim=a[3];p.face=a[4];
  if(p.tx===undefined||(p.x===0&&p.y===0&&!p.init)){p.x=a[1];p.y=a[2];p.init=true}
- p.tx=a[1];p.ty=a[2];
+ p.tx=a[1];p.ty=a[2];{const b=p.buf||(p.buf=[]);b.push({t:d.t,x:a[1],y:a[2]});if(b.length>14)b.shift()}
  if(p.id===me&&predOn()&&performance.now()>slideUntil){
   const[rx,ry]=replayPos(a[1],a[2],d.t),e=Math.hypot(rx-p.x,ry-p.y);
-  if(e>90){                     // only hard-snap on really big errors
-    p.x=rx;p.y=ry;
-  }else if(e>8){                // gentle correction otherwise
-    p.x+=(rx-p.x)*.12;
-    p.y+=(ry-p.y)*.12;
-  }
-  // tiny errors are ignored → no micro-jitter
-}
+  if(e>90){p.x=rx;p.y=ry;p.cx=p.cy=0}      // big error: snap
+  else if(e>3){p.cx=rx-p.x;p.cy=ry-p.y}    // otherwise bleed the correction in smoothly every frame (see update)
+  else p.cx=p.cy=0}
                 })});
 const RES_ICON={tree:'+1 🪵',log:'+1 🪵',bush:'+1 🍃',crystal:'+1 '+EN.ic};
 net('ev',e=>{
@@ -1120,25 +1124,26 @@ function update(dt){
   if(predOn()&&Math.hypot(ix,iy)>0&&now>=slideUntil){const sp=CFG.speed*(me_.anim==='collect'&&CFG.collectMs?CFG.collectSlow:1),vx=(ix+2*iy)/1.414,vy=(2*iy-ix)/1.414;me_.x+=vx*sp*dt;me_.y+=vy*sp*dt;if(ix)me_.face=ix>0?1:-1;me_.anim='walk'}
   const d=Math.hypot(me_.x,me_.y),mx=r-12;if(d>mx){me_.x*=mx/d;me_.y*=mx/d}}
  if(ix||iy)lastDir={x:ix,y:iy};if(st!=='MENU')pushInput(ix,iy);
- // higher lerp rate = much smoother remote players & crocs
-const k=Math.min(1,dt*18);
-crocs.forEach(q=>{
-  if(q.tx!==undefined){
-    q.x+=(q.tx-q.x)*k;
-    q.y+=(q.ty-q.y)*k;
-  }
-});
-players.forEach(p=>{
-  if(p.tx===undefined)return;
-  if(p.id!==me||!predOn()||now<slideUntil){
-    p.x+=(p.tx-p.x)*k;
-    p.y+=(p.ty-p.y)*k;
-  }
-});
+ // crocodiles move in straight lines: dead-reckon them from the latest snapshot (compensates latency, no stair-stepping)
+{const kc=Math.min(1,dt*26),tn=nowS();
+ crocs.forEach(q=>{if(q.tx===undefined)return;let X=q.tx,Y=q.ty;if(q.w===2&&q.sT){const age=Math.max(0,Math.min(.3,(tn-q.sT)/1000));X+=q.vx*age;Y+=q.vy*age}
+  if(Math.hypot(X-q.x,Y-q.y)>150){q.x=X;q.y=Y}else{q.x+=(X-q.x)*kc;q.y+=(Y-q.y)*kc}})}
+// other players (and me when not predicted): snapshot interpolation, drawn ~100 ms in the past so motion is perfectly even
+{const rt=nowS()-100;
+ players.forEach(p=>{
+  if(p.id===me&&predOn()&&now>=slideUntil){ // my own player: prediction + smooth reconciliation
+    if(p.cx||p.cy){const f=Math.min(1,dt*9),dx=p.cx*f,dy=p.cy*f;p.x+=dx;p.y+=dy;p.cx-=dx;p.cy-=dy;if(Math.abs(p.cx)<.02)p.cx=0;if(Math.abs(p.cy)<.02)p.cy=0}return}
+  const b=p.buf;if(!b||!b.length){if(p.tx!==undefined){p.x+=(p.tx-p.x)*Math.min(1,dt*18);p.y+=(p.ty-p.y)*Math.min(1,dt*18)}return}
+  const L=b[b.length-1];let X,Y;
+  if(rt>=L.t){const P=b.length>1?b[b.length-2]:null,gap=P?(L.t-P.t)/1000:0,ex=Math.min(.12,(rt-L.t)/1000);X=L.x;Y=L.y;if(P&&gap>0&&Math.hypot(L.x-P.x,L.y-P.y)<120){X+=(L.x-P.x)/gap*ex;Y+=(L.y-P.y)/gap*ex}} // starved: extrapolate briefly
+  else if(rt<=b[0].t){X=b[0].x;Y=b[0].y}
+  else{let i=b.length-2;while(i>0&&b[i].t>rt)i--;const A_=b[i],B_=b[i+1],u=(rt-A_.t)/Math.max(1,B_.t-A_.t);
+    if(Math.hypot(B_.x-A_.x,B_.y-A_.y)>150){X=B_.x;Y=B_.y}else{X=A_.x+(B_.x-A_.x)*u;Y=A_.y+(B_.y-A_.y)*u}}
+  p.x=X;p.y=Y})}
  {const ct=me_&&me_.status==='spectator'?specTarget(me_):me_;
  if(ct){
-   cam.x+=(ct.x-cam.x)*Math.min(1,dt*16);
-   cam.y+=(ct.y-cam.y)*Math.min(1,dt*16);
+   const kcam=1-Math.exp(-dt*30);cam.x+=(ct.x-cam.x)*kcam; // tight camera follow: no visible trailing
+   cam.y+=(ct.y-cam.y)*kcam;
  }}
  // hud
  const rem=Math.max(0,CFG.duration-Math.max(0,el));$('tt').textContent=String(Math.floor(rem/60)).padStart(2,'0')+':'+String(Math.floor(rem%60)).padStart(2,'0');$('timer').className=ACTIVE.includes(st)&&rem<=10?'hot':'';
@@ -1164,15 +1169,28 @@ if(DEBUG){$('dbg').innerHTML='<pre style="margin:0"></pre><button id="d1">+150ms
  $('d1').onclick=()=>lag=lag?0:150;$('d2').onclick=()=>loss=loss?0:.1;$('d3').onclick=()=>{socket.disconnect();setTimeout(()=>socket.connect(),1500)};
  document.querySelectorAll('#dbg [data-a]').forEach(b=>b.onclick=()=>{const a=b.dataset.a;socket.emit('dbg',a==='water+10s'?{a:'water',v:el+10}:{a})})}
 let last=performance.now();
-function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;update(dt);draw(n);requestAnimationFrame(loop)}
+let slowF=0,fastF=0;
+function loop(n){const raw=(n-last)/1000,dt=Math.min(.05,raw);last=n;update(dt);draw(n);
+  if(raw<.5&&st!=='MENU'){if(raw>.026){slowF++;fastF=0}else if(++fastF>180)slowF=Math.max(0,slowF-1);if(slowF>90&&dprCap>1){dprCap=Math.max(1,dprCap-.5);slowF=0;resize()}} // phone struggling: render fewer pixels so movement stays smooth
+  requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
+
 
 // ===================== DROWNING DASH: analytics, install prompt, ads/revive, leaderboard, store, help, invite =====================
 // >>> CONFIGURATION (leave empty to switch a feature off)
-const GA_ID='';             // Google Analytics 4 measurement ID, e.g. 'G-XXXXXXXXXX'
+
+ 
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║  GOOGLE ANALYTICS 4  →  paste your Measurement ID between the quotes below ║
+// ║  e.g.  const GA_ID='G-ABC123XYZ9';   (GA admin → Data streams → your site)  ║
+// ║  The gtag.js tag is loaded automatically from here - nothing else to add.  ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+const GA_ID='G-42ZKVK57WP';             // Google Analytics 4 measurement ID, e.g. 'G-XXXXXXXXXX'
 const ADSENSE_CLIENT='';    // AdSense publisher ID for H5 Games Ads, e.g. 'ca-pub-1234567890123456'
 const ADS_TEST=true;        // true = Google's test ads (data-adbreak-test). Set false only after your site is approved.
 const APP_NAME='Drowning Dash';
+
+
 // ---------- user id (leaderboard) ----------
 const UID=(()=>{let u=null;try{u=localStorage.getItem('si_uid')}catch(e){}if(!u||!/^[a-f0-9]{8,32}$/.test(u)){u=Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b=>b.toString(16).padStart(2,'0')).join('');try{localStorage.setItem('si_uid',u)}catch(e){}}return u})();
 const sendIdent=()=>{try{socket.emit('ident',{uid:UID,name:MY_NAME})}catch(e){}};
@@ -1199,20 +1217,24 @@ let joinHow=null;
 const _gotAck=gotAck;gotAck=function(a){_gotAck(a);sendIdent();if(joinHow){track(joinHow==='host'?'room_create':'room_join',{method:joinHow,visibility:a.pub?'public':'private',game_mode:'lobby',play_type:'multiplayer'});joinHow=null}};
 $('qpBtn').addEventListener('click',()=>joinHow='quick');$('createRoom').addEventListener('click',()=>joinHow='host');$('join').addEventListener('click',()=>joinHow='code');
 $('saveName').addEventListener('click',sendIdent);
-// ---------- PWA: service worker + non-intrusive install prompt ----------
-if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+// ---------- PWA: service worker + install (home-screen chip, Settings > Install app, manual steps as fallback) ----------
+if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('service worker:',e)));
 let installEv=null;const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
 const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream,instOff=()=>{try{return Date.now()-(+localStorage.getItem('si_inst_no')||0)<7*864e5}catch(e){return false}};
+const hideInstall=remember=>{$('install').classList.remove('on');if(remember){try{localStorage.setItem('si_inst_no',Date.now())}catch(e){}}};
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEv=e});
-addEventListener('appinstalled',()=>{$('install').classList.remove('on');installEv=null;track('app_installed',{game_mode:'menu',play_type:'none'})});
-let instTimer=setTimeout(function chk(){ // only ever shown on the home screen, a few seconds in, and never again for a week once dismissed
+addEventListener('appinstalled',()=>{hideInstall(false);installEv=null;$('instBtn').style.display='none';track('app_installed',{game_mode:'menu',play_type:'none'})});
+if(standalone)$('instBtn').style.display='none';
+function doInstall(src){
+  if(installEv){installEv.prompt();installEv.userChoice.then(r=>{track('install_prompt',{game_mode:'menu',play_type:'none',source:src,outcome:r.outcome});installEv=null;hideInstall(false)});return}
+  $('instSteps').innerHTML=ios?'Tap the <b>Share</b> button ⬆️ in Safari, then choose <b>Add to Home Screen</b>.':'Open your browser menu <b>⋮</b>, then choose <b>Install app</b> or <b>Add to Home screen</b>.';$('instHelp').style.display='flex'}
+$('instGo').onclick=()=>{hideInstall(false);doInstall('chip')};$('instBtn').onclick=()=>doInstall('settings');$('instOk').onclick=()=>{$('instHelp').style.display='none'};$('instNo').onclick=()=>hideInstall(true);
+setTimeout(function chk(){ // home screen only, never during play; closes by itself after 15 s; a manual close hides it for a week
   if(standalone||instOff())return;
   const home=st==='MENU'&&getComputedStyle($('menu')).display!=='none'&&$('revive').style.display!=='flex'&&$('namePop').style.display!=='flex';
-  if(home&&(installEv||ios)){$('instTxt').textContent=installEv?'Install Drowning Dash':'Add to Home Screen: tap Share, then “Add to Home Screen”';$('instGo').style.display=installEv?'':'none';$('install').classList.add('on');return}
-  instTimer=setTimeout(chk,3000)},8000);
-$('instGo').onclick=()=>{if(!installEv)return;installEv.prompt();installEv.userChoice.then(r=>{track('install_prompt',{game_mode:'menu',play_type:'none',outcome:r.outcome});installEv=null;$('install').classList.remove('on')})};
-$('instNo').onclick=()=>{$('install').classList.remove('on');try{localStorage.setItem('si_inst_no',Date.now())}catch(e){}};
-setInterval(()=>{const ch=$('install');if(ch.classList.contains('on')&&!(st==='MENU'&&getComputedStyle($('menu')).display!=='none'))ch.style.visibility='hidden';else ch.style.visibility=''},500);
+  if(home&&(installEv||ios)){$('instTxt').textContent=installEv?'Install Drowning Dash':'Add to Home Screen: Share ⬆️ → Add to Home Screen';$('instGo').style.display=installEv?'':'none';$('install').classList.add('on');setTimeout(()=>hideInstall(false),15000);return}
+  setTimeout(chk,3000)},5000);
+setInterval(()=>{const ch=$('install');ch.style.visibility=ch.classList.contains('on')&&!(st==='MENU'&&getComputedStyle($('menu')).display!=='none')?'hidden':''},500);
 // ---------- Google AdSense H5 Games Ads (rewarded only, opt-in, never during play) ----------
 const Ads={ready:false,saved:null,
   init(){if(!ADSENSE_CLIENT)return;window.adsbygoogle=window.adsbygoogle||[];window.adConfig=o=>adsbygoogle.push(o);window.adBreak=o=>adsbygoogle.push(o);
@@ -1229,17 +1251,20 @@ const Ads={ready:false,saved:null,
       setTimeout(()=>fin(true,'timeout'),45000)}catch(e){fin(true,'error')}}};
 Ads.init();
 // ---------- solo revive offer (shown only after a solo death / sinking, never during play) ----------
-let reviveCtx=null,reviveTimer=null;
+// The ring around Play fills in 5 s. During that time the player can tap Play (go now) or "give up" (cancel).
+// When the ring completes the ad / revive starts automatically and can no longer be cancelled.
+let reviveCtx=null,reviveTimer=null,reviveLive=false;
 function reviveOffer(d){if(!(d&&d.mode==='coop'&&d.solo&&d.canRevive))return false;
-  reviveCtx=d;const b=$('revPlay'),r=$('revRing');b.disabled=true;r.style.animation='none';void r.getBoundingClientRect();r.style.animation='';
+  reviveCtx=d;reviveLive=false;const b=$('revPlay'),r=$('revRing'),gv=$('revGive');b.disabled=false;gv.disabled=false;gv.style.visibility='visible';
+  r.style.animation='none';void r.getBoundingClientRect();r.style.animation='';
   $('revive').style.display='flex';track('revive_offered',{cause:d.cause,level:d.level,play_type:'solo'});
-  clearTimeout(reviveTimer);reviveTimer=setTimeout(()=>{b.disabled=false},5000);return true}
-const reviveClose=()=>{$('revive').style.display='none';clearTimeout(reviveTimer)};
-function reviveGiveUp(){const d=reviveCtx;reviveClose();reviveCtx=null;if(!d)return;track('revive_declined',{level:d.level,play_type:'solo'});
-  const dd=Object.assign({},d,{canRevive:false});trackOver(dd);socket.listeners('over')[0](dd)} // falls through to the normal end screen (Play again / Home)
-$('revGive').onclick=reviveGiveUp;
-$('revPlay').onclick=()=>{const b=$('revPlay');if(b.disabled)return;b.disabled=true;
-  Ads.rewarded((ok,why)=>{if(!ok){reviveGiveUp();return}track('revive_accepted',{ad:why,play_type:'solo'});socket.emit('revive');clearTimeout(reviveTimer);reviveTimer=setTimeout(()=>{if(reviveCtx)reviveGiveUp()},4000)})};
+  clearTimeout(reviveTimer);reviveTimer=setTimeout(reviveGo,5000);return true}
+const reviveClose=()=>{$('revive').style.display='none';clearTimeout(reviveTimer);reviveLive=false};
+function reviveGo(){if(!reviveCtx||reviveLive)return;reviveLive=true;clearTimeout(reviveTimer);$('revPlay').disabled=true;$('revGive').disabled=true;$('revGive').style.visibility='hidden'; // no cancelling from here on
+  Ads.rewarded((ok,why)=>{if(!ok){reviveGiveUp(true);return}track('revive_accepted',{ad:why,play_type:'solo'});socket.emit('revive');clearTimeout(reviveTimer);reviveTimer=setTimeout(()=>{if(reviveCtx)reviveGiveUp(true)},4000)})}
+function reviveGiveUp(force){if(reviveLive&&!force)return;const d=reviveCtx;reviveClose();reviveCtx=null;if(!d)return;track('revive_declined',{level:d.level,play_type:'solo'});
+  const dd=Object.assign({},d,{canRevive:false});trackOver(dd);socket.listeners('over')[0](dd)} // normal end screen (Play again / Home)
+$('revGive').onclick=()=>reviveGiveUp(false);$('revPlay').onclick=reviveGo;
 socket.on('rev',d=>{reviveCtx=null;reviveClose();startAt=d.startAt;offset=d.serverNow-Date.now();col=null;banner('🌊 LOW TIDE!<small>15 more seconds — finish the build and escape</small>',3000);snd(520,.5,'triangle',.12,2)});
 // ---------- name popup (first visit) ----------
 function openNamePop(){$('nameIn').value='';$('nameGo').disabled=true;$('namePop').style.display='flex'}
@@ -1289,5 +1314,14 @@ async function inviteFriends(src){
   toast('Invite copied — paste it anywhere!')}
 $('backBtn').onclick=e=>{e.stopPropagation();show(ovBack)};
 setInterval(()=>{const sub=['store','lbv','help','settings'].some(i=>$(i).style.display==='flex');['storeBtn','lbBtn','helpBtn'].forEach(i=>$(i).style.display=sub?'none':'');$('backBtn').style.display=sub?'flex':'none'},100);
+// ---------- no accidental browser zoom (double-tap, pinch, ctrl+wheel); the in-game camera button is the only zoom ----------
+(function(){let lt=0;const ctl='button,input,textarea,a,#aim,.sk';
+  document.addEventListener('touchend',e=>{const n=Date.now(),t=e.target;if(n-lt<350&&e.cancelable&&!(t.closest&&t.closest(ctl)))e.preventDefault();lt=n},{passive:false});
+  ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
+  document.addEventListener('dblclick',e=>e.preventDefault());
+  document.addEventListener('touchmove',e=>{if(e.touches&&e.touches.length>1&&e.cancelable)e.preventDefault()},{passive:false});
+  document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault()},{passive:false});
+  addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&['+','-','=','0'].includes(e.key))e.preventDefault()});
+  if(window.visualViewport)visualViewport.addEventListener('resize',()=>{if(visualViewport.scale>1.01){try{const m=document.querySelector('meta[name=viewport]'),o=m.getAttribute('content');m.setAttribute('content',o.replace('maximum-scale=1','maximum-scale=1.01'));setTimeout(()=>m.setAttribute('content',o),60)}catch(e){}}})})();
 $('invMenu').onclick=()=>inviteFriends('home');$('invHost').onclick=()=>inviteFriends('host_room');
 </script></body></html>
