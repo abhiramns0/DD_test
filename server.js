@@ -12,6 +12,11 @@ const NOCACHE=new Set(['/index.html','/sw.js','/manifest.webmanifest']);
 const srv=http.createServer((q,s)=>{
   const u=decodeURIComponent((q.url||'/').split('?')[0]);
   if(u==='/health'){s.end('ok');return}
+  if(u==='/admin/clear-leaderboard'){
+    const qs=new URLSearchParams((q.url.split('?')[1])||''),key=process.env.ADMIN_KEY||'';
+    const same=key&&qs.get('key')&&qs.get('key').length===key.length&&crypto.timingSafeEqual(Buffer.from(qs.get('key')),Buffer.from(key));
+    if(!same||qs.get('confirm')!=='yes'){s.statusCode=403;s.end('forbidden (needs ADMIN_KEY and confirm=yes)');return}
+    adminClear().then(ok=>{s.statusCode=ok?200:500;s.end(ok?'leaderboard cleared':'could not clear the stored copy')});return}
   const rel=u==='/'?'/index.html':u,full=path.normalize(path.join(PUB,rel));
   if(!full.startsWith(PUB+path.sep)){s.statusCode=403;s.end('forbidden');return}
   const send=(file,rp)=>fs.readFile(file,(e,b)=>{
@@ -25,22 +30,43 @@ const srv=http.createServer((q,s)=>{
 });
 const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'}});
 
-// ---------- leaderboard (best co-op level, solo and multiplayer). File persistence is best-effort: use a persistent disk / DB on hosts with ephemeral storage ----------
-const LB_FILE=path.join(process.env.DATA_DIR||path.join(__dirname,'data'),'leaderboard.json');
-let lb={};try{lb=JSON.parse(fs.readFileSync(LB_FILE,'utf8'))}catch(e){}
-let lbDirty=false;
-setInterval(()=>{if(!lbDirty)return;lbDirty=false;try{fs.mkdirSync(path.dirname(LB_FILE),{recursive:true});fs.writeFileSync(LB_FILE,JSON.stringify(lb))}catch(e){}},15000);
+// ---------- leaderboard (best co-op level, solo and multiplayer) ----------
+// Scores are NEVER deleted automatically: they stay until the developer clears them (see ADMIN_KEY below, or delete the stored data).
+// Where they live:
+//   * Redis REST (recommended on hosts with a temporary disk, e.g. Render free): set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
+//     (free Upstash database). Scores then survive restarts and redeploys.
+//   * otherwise a JSON file in DATA_DIR (default ./data) - only permanent if that folder is on a persistent disk.
+const LB_DIR=process.env.DATA_DIR||path.join(__dirname,'data'),LB_FILE=path.join(LB_DIR,'leaderboard.json');
+const KV_URL=process.env.UPSTASH_REDIS_REST_URL||process.env.LB_KV_URL||'',KV_TOKEN=process.env.UPSTASH_REDIS_REST_TOKEN||process.env.LB_KV_TOKEN||'',KV_KEY=process.env.LB_KV_KEY||'drowning-dash:leaderboard';
+const useKV=!!(KV_URL&&KV_TOKEN&&typeof fetch==='function');
+const kv=async cmd=>{const r=await fetch(KV_URL,{method:'POST',headers:{Authorization:'Bearer '+KV_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(cmd)});if(!r.ok)throw new Error('kv '+r.status);return(await r.json()).result};
+let lb={},lbDirty=false,lbSaving=false,kvReady=!useKV; // kvReady: the stored copy was read successfully, so it is safe to write it back
+const mergeLb=o=>{for(const[id,e]of Object.entries(o||{})){const m=lb[id];if(!m){lb[id]=e;continue}m.solo=Math.max(m.solo||0,e.solo||0);m.mp=Math.max(m.mp||0,e.mp||0);if((e.t||0)>(m.t||0)){m.name=e.name;m.t=e.t}}};
+async function loadLb(){
+  try{mergeLb(JSON.parse(fs.readFileSync(LB_FILE,'utf8')))}catch(e){}
+  if(!useKV)return;
+  try{const v=await kv(['GET',KV_KEY]);if(v)mergeLb(JSON.parse(v));kvReady=true;console.log('leaderboard: loaded',Object.keys(lb).length,'players from Redis')}
+  catch(e){console.warn('leaderboard: Redis not reachable yet (will retry):',e.message)}}
+async function saveLb(){
+  if(useKV&&!kvReady){await loadLb();if(!kvReady)return} // never overwrite stored scores with a partial copy
+  if(!lbDirty||lbSaving)return;lbDirty=false;lbSaving=true;const json=JSON.stringify(lb);
+  try{fs.mkdirSync(LB_DIR,{recursive:true});fs.writeFileSync(LB_FILE,json)}catch(e){}
+  if(useKV){try{await kv(['SET',KV_KEY,json])}catch(e){lbDirty=true;console.warn('leaderboard save failed:',e.message)}}
+  lbSaving=false}
+setInterval(saveLb,3000);
+for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{lbDirty=true;lbSaving=false;saveLb().finally(()=>process.exit(0));setTimeout(()=>process.exit(0),3000)}); // flush on shutdown/redeploy
 const okUid=u=>typeof u==='string'&&/^[a-f0-9]{8,32}$/.test(u);
 const cleanName=n=>String(n||'').replace(/[^\p{L}\p{N} _.-]/gu,'').trim().slice(0,14);
 const recordScore=({uid,name,kind,level})=>{
   if(!okUid(uid)||(kind!=='solo'&&kind!=='mp')||!(level>=1&&level<=999))return;
   const e=lb[uid]||(lb[uid]={name:'Player',solo:0,mp:0}),n=cleanName(name);if(n)e.name=n;
-  if(level>e[kind]){e[kind]=level;e.t=Date.now()}lbDirty=true;
-  const ks=Object.keys(lb);if(ks.length>5000){ks.sort((a,b)=>Math.max(lb[a].solo,lb[a].mp)-Math.max(lb[b].solo,lb[b].mp)).slice(0,500).forEach(k=>delete lb[k])}};
+  if(level>e[kind]){e[kind]=level;e.t=Date.now()}lbDirty=true};
 const topList=(kind,uid)=>{
   const all=Object.entries(lb).filter(([,e])=>e[kind]>0).sort((a,b)=>b[1][kind]-a[1][kind]||(a[1].t||0)-(b[1].t||0));
   const rows=all.slice(0,50).map(([id,e],i)=>({rank:i+1,name:e.name,score:e[kind],me:id===uid?1:0}));
   const i=all.findIndex(([id])=>id===uid);return{rows,me:i>=0?{rank:i+1,score:all[i][1][kind]}:null}};
+// Developer-only reset: set ADMIN_KEY in the environment, then open  /admin/clear-leaderboard?key=<ADMIN_KEY>&confirm=yes
+const adminClear=async()=>{lb={};lbDirty=false;try{fs.rmSync(LB_FILE,{force:true})}catch(e){}if(useKV){try{await kv(['DEL',KV_KEY]);kvReady=true}catch(e){return false}}return true};
 
 const CH='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const newCode=()=>{let c;do{c=Array.from({length:4},()=>CH[Math.random()*CH.length|0]).join('')}while(rooms.has(c));return c};
@@ -101,5 +127,6 @@ io.on('connection',s=>{
     if(rm.state==='LOBBY')rm.removePlayer(pid);else rm.setOffline(pid,Date.now()); // grace period in game
     if(!rm.humans())rooms.delete(rm.code)});
 });
-setInterval(()=>{const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)})},1000/CFG.tick);
-const PORT=process.env.PORT||3000;srv.listen(PORT,()=>console.log('Drowning Dash server on :'+PORT));
+// steady game loop: self-correcting timer (setInterval drifts), so every client gets evenly spaced snapshots
+{const step=1000/CFG.tick;let next=Date.now();(function loop(){const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)});next+=step;if(next<Date.now()-250)next=Date.now();setTimeout(loop,Math.max(1,next-Date.now()))})()}
+const PORT=process.env.PORT||3000;loadLb().catch(()=>{}).finally(()=>srv.listen(PORT,()=>console.log('Drowning Dash server on :'+PORT+(useKV?' (leaderboard: Redis)':' (leaderboard: file)'))));
