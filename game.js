@@ -43,7 +43,7 @@ const REVIVE={windowMs:10000,holdMs:3000,r:55,protectMs:2500};
 // Bots fill public rooms. fillTo = total players the room tries to reach. levels = skill (0..1): rookie, average, expert.
 const BOT={fillTo:4,fillDelayMs:6000,autoStartMs:20000,joinGraceMs:6000,levels:[.35,.6,.85],names:['Nova','Bolt','Pixel','Ziggy','Maple','Rusty','Echo','Mango']};
 const REVIVE_LEFT_S=15,ROUND_BREAK_MS=5000,SKINS_FREE_BOT=['default','santa','elf','sunny','witch','holi','diwali'];
-const CFG={tick:20,minPlayers:2,maxPlayers:4,countdownMs:3000,speed:PLAYER.moveSpeed*PLAYER.moveSpeedMultiplier,collectR:50,buildR:80,boardR:52,raftCap:4,contribMs:220,
+const CFG={tick:30,minPlayers:2,maxPlayers:4,countdownMs:3000,speed:PLAYER.moveSpeed*PLAYER.moveSpeedMultiplier,collectR:50,buildR:80,boardR:52,raftCap:4,contribMs:220,
 collectMs:450,collectCdMs:400,collectSlow:.35,treeAmt:3,logAmt:2,bushAmt:2,crystalAmt:2, // crystal = energy node
 push:{cdMs:1200,missMs:350,range:52,dist:62,decay:8,immuneMs:700,occupyMs:400,graceMs:0}, // dist = total slide distance (world units)
 launchMs:1500,floodMs:1800,escapeCountdownMs:10000,collapseMs:4500,transitionMs:2500,offlineMs:20000,spawnF:.62,stationF:.26,endR:40,failR:60,croc:CROC};
