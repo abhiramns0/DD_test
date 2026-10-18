@@ -11,8 +11,10 @@ const PLAYER={moveSpeed:130,        // base units/second
 // Co-op / Solo level progression (Solo = co-op with one player). Level n grows from level 1.
 const COOP={
   coopLevelDuration:60,    // sinking timer (s) on level 1
-  coopDurationStep:2,      // seconds removed per level
-  coopMinimumDuration:40,  // timer never goes below this
+  coopDurationStep:1.5,      // seconds removed per level
+  coopMinimumDuration:45,  // timer never goes below this
+  coopSpeedGrowth:.05,     // every level after 1 makes EVERYTHING faster by this much: player, crocodiles, collecting, building (0 = off)
+  coopSpeedMax:1.8,        // speed factor never goes above this
   coopResourceScaling:1,   // 0 = needs never grow, 1 = default, 2 = twice as fast
   coopBaseIslandSize:380,  // base island radius at level 1 (before islandSizeMultiplier)
   coopIslandGrowth:6,      // extra base radius per level
@@ -47,7 +49,7 @@ const REVIVE={windowMs:10000,holdMs:3000,r:55,protectMs:2500};
 const BOT={fillTo:4,fillDelayMs:6000,autoStartMs:20000,joinGraceMs:6000,levels:[.35,.6,.85],names:['Nova','Bolt','Pixel','Ziggy','Maple','Rusty','Echo','Mango']};
 const REVIVE_LEFT_S=15,ROUND_BREAK_MS=5000,SKINS_FREE_BOT=['default','santa','elf','sunny','witch','holi','diwali'];
 const CFG={tick:30,minPlayers:2,maxPlayers:4,countdownMs:3000,speed:PLAYER.moveSpeed*PLAYER.moveSpeedMultiplier,collectR:50,buildR:80,boardR:52,raftCap:4,contribMs:220,
-collectMs:450,collectCdMs:400,collectSlow:.35,treeAmt:3,logAmt:2,bushAmt:2,crystalAmt:2, // crystal = energy node
+collectMs:0,collectCdMs:400,collectSlow:.35,treeAmt:3,logAmt:2,bushAmt:2,crystalAmt:2, // crystal = energy node
 push:{cdMs:1200,missMs:350,range:75,dist:105,decay:8,slideMs:800,immuneMs:700,occupyMs:400,graceMs:0}, // range = how far away you can push someone, dist = total slide distance (world units), slideMs = how long the server owns a pushed player (keep >= slide time; mirror in index.html PUSH_SLIDE_MS)
 launchMs:1500,floodMs:1800,escapeCountdownMs:10000,collapseMs:4500,transitionMs:2500,offlineMs:20000,spawnF:.62,stationF:.26,endR:40,failR:60,croc:CROC};
 // Skins any player may use; premium skins must be in p.ownedSkins (fill it from your shop/account DB when you add purchases).
@@ -67,17 +69,18 @@ const KIND={tree:'w',log:'w',bush:'l',crystal:'c'},AMT={tree:CFG.treeAmt,log:CFG
 const PH=['PLAYING','RAFT_READY','ESCAPE','COLLAPSE'];
 const radius=(el,c)=>c.islandR-(c.islandR-c.endR)*Math.min(1,Math.max(0,el/c.duration));
 function coopLevelCfg(L,solo){
-  const k=COOP.coopResourceScaling,cs=solo?COOP.soloCrocodileStartLevel:COOP.coopCrocodileStartLevel,cr=solo?COOP.soloCrocodileScaling:COOP.coopCrocodileScaling;
+  const sk=Math.min(COOP.coopSpeedMax,1+(L-1)*COOP.coopSpeedGrowth),k=COOP.coopResourceScaling,cs=solo?COOP.soloCrocodileStartLevel:COOP.coopCrocodileStartLevel,cr=solo?COOP.soloCrocodileScaling:COOP.coopCrocodileScaling;
   return{name:'Level '+L,duration:Math.max(COOP.coopMinimumDuration,COOP.coopLevelDuration-(L-1)*COOP.coopDurationStep),islandR:COOP.coopBaseIslandSize+(L-1)*COOP.coopIslandGrowth,
     need:{w:Math.min(16,Math.round(6+(L-1)*k)),l:Math.min(10,Math.round(4+(L-1)*.6*k)),c:L>=COOP.coopEnergyStartLevel?Math.min(5,1+Math.floor((L-COOP.coopEnergyStartLevel)*.5*k)):0},
-    vehicle:L<3?'raft':L<6?'boat':L<9?'bigboat':'ship',supply:Math.max(1.4,1.9-.05*L),
+    vehicle:L<3?'raft':L<6?'boat':L<9?'bigboat':'ship',supply:Math.max(1.7,2.2-.04*L), // plenty of resources on the island (1.7x what you need or more)
+    spdK:sk,speed:CFG.speed*sk,collectCdMs:Math.round(CFG.collectCdMs/sk),contribMs:Math.round(CFG.contribMs/sk), // level speed-up: walking, picking up and building all scale together; crocodiles use spdK too
     crocN:L>=cs?Math.min(COOP.crocodileMax,1+Math.floor((L-cs)*cr)):0};
 }
 function arenaCfg(mode,stage,solo){
   const m=mode==='tourney'?MODES.tourney.stages[stage-1]:mode==='coop'?coopLevelCfg(stage,solo):MODES[mode];
   const R=Math.max(ISLAND.minimumIslandSize,Math.min(ISLAND.maximumIslandSize,Math.round(m.islandR*ISLAND.islandSizeMultiplier)));
   return Object.assign({mode,stage,tick:CFG.tick,endR:CFG.endR,failR:CFG.failR,speed:CFG.speed,collectR:CFG.collectR,buildR:CFG.buildR,boardR:CFG.boardR,
-    raftCap:CFG.raftCap,collapseMs:CFG.collapseMs,comp:mode!=='coop',pvp:mode==='last',gunRange:POWER.gunRange,gunCone:POWER.gunConeDeg,launch:true,collectMs:mode==='coop'?0:CFG.collectMs,collectSlow:CFG.collectSlow,supply:1.5,crocN:0},
+    raftCap:CFG.raftCap,collapseMs:CFG.collapseMs,comp:mode!=='coop',pvp:mode==='last',gunRange:POWER.gunRange,gunCone:POWER.gunConeDeg,launch:true,collectMs:CFG.collectMs,collectSlow:CFG.collectSlow,supply:1.5,crocN:0},
     m,{islandR:R},mode==='last'?{energy:LAST_ESCAPE}:{});
 }
 function rng(s){let a=s>>>0;return()=>{a=(a+0x6D2B79F5)>>>0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
@@ -143,7 +146,7 @@ class Arena{
       stn:this.stations.map(S=>({id:S.id,tid:S.tid,w:S.w,l:S.l,c:S.c,done:S.done,dead:S.dead,dep:S.cdAt||0,ln:S.launched?1:(S.launchAt||S.flooding)?2:0})),
       pl:this.members().map(p=>({id:p.id,name:p.name,color:p.color,tid:p.tid,status:p.status,seat:p.seat,esc:p.escAt||0,off:p.offline?1:0,skin:p.skin,bot:p.bot?1:0,sa:p.shieldUntil,su:p.stunUntil}))};
   }
-  take(p,i,now){const n=this.layout[i];p.act=null;if(this.left[i]<=0)return;this.left[i]--;p.inv[KIND[n.k]]++;p.cd=now+CFG.collectCdMs;p.collT=now;p.invD=true;this.dirty=true;this.room.ea(this,'ev',{t:'c',p:p.id,i})}
+  take(p,i,now){const n=this.layout[i];p.act=null;if(this.left[i]<=0)return;this.left[i]--;p.inv[KIND[n.k]]++;p.cd=now+(this.cfg.collectCdMs||CFG.collectCdMs);p.collT=now;p.invD=true;this.dirty=true;this.room.ea(this,'ev',{t:'c',p:p.id,i})}
   collect(p,now,r){
     const c=this.cfg,need=c.need,L=this.layout,S=this.stations.find(s=>s.tid===p.tid);
     // you can only carry what the vehicle still needs: remaining = need - already built (updates live as you build)
@@ -295,7 +298,7 @@ if(c.mode==='coop'&&!this.room.solo){
       if(q.st==='wait'){
         if(now<q.t)continue;
         const a=Math.random()*6.2832,sx=Math.cos(a)*(r-10),sy=Math.sin(a)*(r-10),ta=Math.random()*6.2832,td=Math.sqrt(Math.random())*r*.5,dx=Math.cos(ta)*td-sx,dy=Math.sin(ta)*td-sy,l=Math.hypot(dx,dy)||1;
-        q.x=sx;q.y=sy;q.vx=dx/l*K.speed;q.vy=dy/l*K.speed;q.st='warn';q.t=now+K.warnMs;q.age=0; // random straight line through the island
+        q.x=sx;q.y=sy;q.vx=dx/l*K.speed*(this.cfg.spdK||1);q.vy=dy/l*K.speed*(this.cfg.spdK||1);q.st='warn';q.t=now+K.warnMs;q.age=0; // random straight line through the island
       }else if(q.st==='warn'){if(now>=q.t)q.st='run'}
       else{
         q.x+=q.vx*dt;q.y+=q.vy*dt;q.age+=dt;
@@ -345,7 +348,7 @@ if(c.mode==='coop'&&!this.room.solo){
       const need=c.need,near=ps.filter(p=>p.status==='alive'&&now>=p.stunUntil&&p.tid===S.tid&&Math.hypot(p.x-S.x,p.y-S.y)<c.buildR);
       for(let j=0;j<near.length;j++){const p=near[(S.rr+j)%near.length];
         if(S.w<need.w&&p.inv.w>0){p.inv.w--;S.w++}else if(S.l<need.l&&p.inv.l>0){p.inv.l--;S.l++}else if(S.c<need.c&&p.inv.c>0){p.inv.c--;S.c++}else continue;
-        S.rr=(S.rr+j+1)%near.length;S.cd=CFG.contribMs;p.buildT=now;p.invD=true;this.dirty=true;R.ea(this,'ev',{t:'b',p:p.id,s:S.id});break}
+        S.rr=(S.rr+j+1)%near.length;S.cd=c.contribMs||CFG.contribMs;p.buildT=now;p.invD=true;this.dirty=true;R.ea(this,'ev',{t:'b',p:p.id,s:S.id});break}
       if(S.w>=need.w&&S.l>=need.l&&S.c>=need.c){S.done=true;this.dirty=true;if(this.state==='PLAYING')this.state='RAFT_READY';R.ea(this,'ev',{t:'r',s:S.id})}
     }
     if(live){this.spawnEnergy(now,el,r);if(this.crocs.length)this.tickCrocs(now,dt,r,ps);this.spawnDrops(now,r);this.tickRevive(now,dt,ps,r)}
