@@ -101,18 +101,88 @@ function create(log=console){
     }
   }
 
+  // ---- accounts: profile (unlock progress + purchases), guest -> account merge, delete ---------------------------------
+  const EMPTY=()=>({name:'',done:0,skins:[],scenery:[]});
+  const idList=a=>(Array.isArray(a)?a:[]).filter(x=>typeof x==='string'&&x.length<24);
+  async function ensurePlayer(c,uid,name){await c.query('INSERT INTO lb_players (player_id,name) VALUES ($1,$2) ON CONFLICT (player_id) DO NOTHING',[uid,cleanName(name)||'Player'])}
+  async function profile(uid){ // never throws: a database problem just means "nothing known yet"
+    if(!pool||!validUid(uid))return EMPTY();
+    try{const r=await pool.query('SELECT p.name,f.done_level,f.owned_skins,f.owned_scenery FROM lb_players p LEFT JOIN lb_profiles f USING (player_id) WHERE p.player_id=$1',[uid]);
+      const x=r.rows[0];return x?{name:x.name==='Player'?'':x.name,done:x.done_level||0,skins:x.owned_skins||[],scenery:x.owned_scenery||[]}:EMPTY()}
+    catch(e){log.error('[leaderboard] profile read failed:',e.message);return EMPTY()}}
+  async function progress(uid,done){ // highest solo level completed - only ever goes up
+    done=Math.floor(+done);if(!pool||!validUid(uid)||!(done>=1)||done>MAX_LEVEL)return false;
+    const c=await pool.connect().catch(()=>null);if(!c)return false;
+    try{await ensurePlayer(c,uid);
+      await c.query(`INSERT INTO lb_profiles (player_id,done_level) VALUES ($1,$2)
+        ON CONFLICT (player_id) DO UPDATE SET done_level=GREATEST(lb_profiles.done_level,EXCLUDED.done_level),updated_at=now()`,[uid,done]);return true}
+    catch(e){log.error('[leaderboard] progress save failed:',e.message);return false}finally{c.release()}}
+  // Moves everything a guest earned into the account: best scores (higher wins, earlier date wins ties), unlock progress, purchases.
+  // Atomic, safe to repeat, and a guest id can only ever be claimed by ONE account.
+  async function merge(guest,account){
+    if(!pool)return{ok:false,err:'unavailable'};
+    if(!validUid(guest)||!validUid(account)||guest===account)return{ok:false,err:'bad_request'};
+    try{await flush()}catch(e){} // make sure scores recorded a moment ago are in the database before they are moved
+    let c;try{c=await pool.connect()}catch(e){return{ok:false,err:'unavailable'}}
+    try{
+      await c.query('BEGIN');
+      const lk=await c.query('SELECT account_id FROM lb_links WHERE guest_id=$1',[guest]);
+      const out={ok:true,moved:{solo:0,mp:0,done:0,skins:[],scenery:[]}};
+      if(lk.rows[0]&&lk.rows[0].account_id!==account){await c.query('ROLLBACK');return{ok:false,err:'claimed'}}
+      if(!lk.rows[0]){
+        const gs=await c.query("SELECT play_type,score FROM lb_scores WHERE player_id=$1 AND game_mode=$2",[guest,MODE]);
+        for(const r of gs.rows)out.moved[r.play_type==='solo'?'solo':'mp']=r.score;
+        const gp=await c.query('SELECT done_level,owned_skins,owned_scenery FROM lb_profiles WHERE player_id=$1',[guest]);
+        if(gp.rows[0]){out.moved.done=gp.rows[0].done_level;out.moved.skins=gp.rows[0].owned_skins;out.moved.scenery=gp.rows[0].owned_scenery}
+        await c.query(`INSERT INTO lb_players (player_id,name) VALUES ($2,COALESCE((SELECT name FROM lb_players WHERE player_id=$1),'Player'))
+                       ON CONFLICT (player_id) DO NOTHING`,[guest,account]);
+        await c.query(`INSERT INTO lb_scores (player_id,game_mode,play_type,score,achieved_at)
+                         SELECT $2,game_mode,play_type,score,achieved_at FROM lb_scores WHERE player_id=$1
+                       ON CONFLICT (player_id,game_mode,play_type) DO UPDATE SET
+                         achieved_at=CASE WHEN EXCLUDED.score>lb_scores.score THEN EXCLUDED.achieved_at
+                                          WHEN EXCLUDED.score=lb_scores.score THEN LEAST(lb_scores.achieved_at,EXCLUDED.achieved_at)
+                                          ELSE lb_scores.achieved_at END,
+                         score=GREATEST(lb_scores.score,EXCLUDED.score),updated_at=now()`,[guest,account]);
+        await c.query(`INSERT INTO lb_profiles (player_id,done_level,owned_skins,owned_scenery)
+                         SELECT $2,done_level,owned_skins,owned_scenery FROM lb_profiles WHERE player_id=$1
+                       ON CONFLICT (player_id) DO UPDATE SET
+                         done_level=GREATEST(lb_profiles.done_level,EXCLUDED.done_level),
+                         owned_skins=ARRAY(SELECT DISTINCT unnest(lb_profiles.owned_skins||EXCLUDED.owned_skins)),
+                         owned_scenery=ARRAY(SELECT DISTINCT unnest(lb_profiles.owned_scenery||EXCLUDED.owned_scenery)),updated_at=now()`,[guest,account]);
+        await c.query('INSERT INTO lb_links (guest_id,account_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[guest,account]);
+        await c.query('DELETE FROM lb_players WHERE player_id=$1',[guest]); // cascades to the guest's scores + profile
+      }
+      const sc=await c.query('SELECT play_type,score FROM lb_scores WHERE player_id=$1 AND game_mode=$2',[account,MODE]);
+      await c.query('COMMIT');
+      out.best={solo:0,mp:0};for(const r of sc.rows)out.best[r.play_type==='solo'?'solo':'mp']=r.score;
+      for(const k of['solo','mp'])if(out.best[k])best.set(account+'|'+k,Math.max(best.get(account+'|'+k)||0,out.best[k]));
+      for(const k of['solo','mp']){best.delete(guest+'|'+k);pending.delete(guest+'|'+k)}
+      out.profile=await profile(account);return out;
+    }catch(e){try{await c.query('ROLLBACK')}catch(_){}log.error('[leaderboard] merge failed:',e.message);return{ok:false,err:'unavailable'}}
+    finally{c.release()}}
+  async function remove(uid){ // deletes ALL stored data of one player (account or guest id)
+    if(!pool||!validUid(uid))return false;
+    for(const k of['solo','mp']){best.delete(uid+'|'+k);pending.delete(uid+'|'+k)}pendingNames.delete(uid);
+    for(let i=0;i<3;i++){
+      try{await pool.query('DELETE FROM lb_players WHERE player_id=$1',[uid]);await pool.query('DELETE FROM lb_links WHERE account_id=$1 OR guest_id=$1',[uid]);return true}
+      catch(e){log.error('[leaderboard] delete failed (try '+(i+1)+'):',e.message);await new Promise(r=>setTimeout(r,500*(i+1)))}}
+    return false}
+
   // ---- ops --------------------------------------------------------------------------------------------------------
   async function init(){ // startup self-check (does not block the game server from starting)
     if(!pool)return false;
     try{
       const r=await pool.query("SELECT to_regclass('public.lb_scores') AS s, to_regclass('public.lb_players') AS p");
       if(!r.rows[0].s||!r.rows[0].p){st.ok=false;st.lastError='tables missing';log.error('[leaderboard] connected, but the tables do not exist. Run supabase/migrations/001_leaderboard.sql in the Supabase SQL editor.');return false}
-      st.ok=true;st.lastOkAt=Date.now();log.log('[leaderboard] PostgreSQL connected, tables found.');return true;
+      st.ok=true;st.lastOkAt=Date.now();log.log('[leaderboard] PostgreSQL connected, tables found.');
+      const a=await pool.query("SELECT to_regclass('public.lb_profiles') AS f, to_regclass('public.lb_links') AS l");
+      if(!a.rows[0].f||!a.rows[0].l)log.error('[leaderboard] account tables are missing: run supabase/migrations/002_accounts.sql in the Supabase SQL editor (sign-in progress sync needs it).');
+      return true;
     }catch(e){st.ok=false;st.lastError=e.message;log.error('[leaderboard] cannot reach PostgreSQL:',e.message);return false}
   }
   async function clear(){ // developer-only (see /admin/clear-leaderboard in server.js)
     if(!pool)return false;
-    try{await pool.query('TRUNCATE lb_scores, lb_players');pending.clear();pendingNames.clear();best.clear();for(const k of Object.keys(lastGood))delete lastGood[k];return true}
+    try{await pool.query('TRUNCATE lb_scores'); /* scores only: accounts, names and unlocks (lb_profiles) are kept */pending.clear();pendingNames.clear();best.clear();for(const k of Object.keys(lastGood))delete lastGood[k];return true}
     catch(e){log.error('[leaderboard] clear failed:',e.message);return false}
   }
   const status=()=>({db:!st.configured?'not_configured':st.ok?'ok':'down',queued:pending.size});
@@ -121,6 +191,6 @@ function create(log=console){
     try{await Promise.race([flush(),new Promise(r=>setTimeout(r,4000))])}catch(e){}
     try{if(pool)await pool.end()}catch(e){}
   }
-  return{record,rename,top,init,clear,status,close,validUid,cleanName};
+  return{record,rename,top,init,clear,status,close,validUid,cleanName,profile,progress,merge,remove,idList};
 }
 module.exports={create,validUid,cleanName};
