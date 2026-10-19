@@ -70,7 +70,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .ov .seg button:disabled:not(.on){opacity:.4}
 #mdesc{font-size:14px!important;max-width:300px;min-height:34px}
 #roomcode{font-size:22px;font-weight:800;color:#fff;text-shadow:0 2px 0 var(--ink);letter-spacing:3px}
-#cd{position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;padding-top:16vh;box-sizing:border-box;font-size:11vmin;font-weight:800;color:#fff;opacity:.5;text-shadow:0 2px 6px rgba(39,64,90,.45);pointer-events:none;z-index:4}
+#cd{position:fixed;inset:0;display:none;align-items:center;justify-content:center;box-sizing:border-box;font-size:11vmin;font-weight:800;color:#fff;opacity:.5;text-shadow:0 2px 6px rgba(39,64,90,.45);pointer-events:none;z-index:4}
 #net{position:fixed;left:calc(env(safe-area-inset-left,0px) + 10px);bottom:calc(env(safe-area-inset-bottom,0px) + 8px);font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);z-index:6;pointer-events:none}
 #toast{position:fixed;left:50%;top:72%;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:16px;padding:8px 16px;font-weight:700;display:none;z-index:7;max-width:88%;text-align:center}
 #dbg{position:fixed;right:6px;top:150px;background:rgba(0,0,0,.65);color:#9f9;font:11px monospace;padding:6px;border-radius:8px;z-index:8;display:none;white-space:pre;max-width:60vw}
@@ -87,7 +87,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #banner small{display:block;font-size:.5em;margin-top:8px}
 #banner.bad{color:#ffd1d1}
 #banner.card{top:50%;left:50%;right:auto;width:min(88vw,430px);box-sizing:border-box;transform:translate(-50%,-50%);padding:18px 22px;border-radius:26px;background:rgba(39,64,90,.42);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1.5px solid rgba(255,255,255,.6);box-shadow:0 3px 10px rgba(20,40,70,.25);font-size:clamp(24px,7vw,38px);text-shadow:0 1px 3px rgba(20,40,70,.55)}
-#banner.card small{font-size:.45em;font-weight:700;letter-spacing:.4px;line-height:1.3;opacity:.95;margin-top:10px}#banner.card.bad{color:#fff;border-color:rgba(255,150,150,.85)}
+#banner.card small{font-size:.45em;font-weight:700;letter-spacing:.4px;line-height:1.3;opacity:.95;margin-top:10px}#banner.card small .nx{display:inline-block;font-size:1.55em;color:#ffe066;margin-top:2px}#banner.card.bad{color:#fff;border-color:rgba(255,150,150,.85)}
 .dlg{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(39,64,90,.55);touch-action:none}
 .dlg>div{background:#fff;border-radius:24px;padding:22px 22px 18px;max-width:320px;width:100%;text-align:center;box-shadow:0 8px 0 rgba(39,64,90,.25)}
 .dlg h2{margin:0 0 6px;font-size:26px;font-weight:800}
@@ -236,7 +236,7 @@ addEventListener('resize',resize);resize();
 // Two independent switches: 🔊 = game sound effects, 🎵 = background music + ocean ambience.
 let ac,muted=false,musicOff=false,amb,mbus,mus,dsend,nbuf,mTimer=null,mNext=0,mStep=0;
 const AMB_VOL=.03,   // ocean ambience level (was .05)
-      MUSIC_VOL=.35;  // background music level; lower this if you want it even softer
+      MUSIC_VOL=.15;  // background music level; lower this if you want it even softer
 try{muted=localStorage.getItem('si_sfx_off')==='1';musicOff=localStorage.getItem('si_mus_off')==='1'}catch(e){}
 function snd(f,d=.1,type='sine',v=.08,slide=0){if(!ac||muted)return;const o=ac.createOscillator(),x=ac.createGain();o.type=type;o.frequency.value=f;if(slide)o.frequency.exponentialRampToValueAtTime(f*slide,ac.currentTime+d);x.gain.setValueAtTime(v,ac.currentTime);x.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+d);o.connect(x).connect(ac.destination);o.start();o.stop(ac.currentTime+d)}
 // ---- music: a generated, endlessly varying island theme (no audio files needed)
@@ -252,6 +252,32 @@ function pickBpm(){
   const L=mode==='coop'?stage:mode==='tourney'?3+stage:6,frac=CFG.duration?Math.max(0,Math.min(1,el/CFG.duration)):0,late=st==='ESCAPE'||st==='COLLAPSE'||st==='RAFT_READY';
   const urg=st==='COUNTDOWN'?0:late||frac>.85?2:frac>.65?1:0;
   return Math.round((mode==='last'?110:100)+Math.min(24,(L-1)*2.5)+urg*6)}
+const MEL=[ // 8 two-bar phrases x 16 eighth-note steps (0 = rest)
+ [72,0,76,0,79,0,76,72, 69,0,72,0,76,0,72,69],
+ [77,0,72,0,69,0,72,0, 74,0,79,0,74,0,71,0],
+ [72,0,76,0,79,0,81,79, 76,0,72,0,69,0,72,76],
+ [77,0,76,0,72,0,74,0, 71,0,74,0,79,0,0,0],
+ [81,0,79,0,77,0,76,77, 79,0,77,0,74,0,71,74],
+ [76,0,79,0,83,0,79,76, 81,0,76,0,72,0,76,81],
+ [81,0,79,0,77,0,79,81, 79,0,83,0,79,0,74,0],
+ [76,0,79,0,83,0,79,76, 81,0,0,76,0,72,0,0]];
+function mPluck(m,t,d,v){const f=mf(m),o=ac.createOscillator(),o2=ac.createOscillator(),h=ac.createGain(),fl=ac.createBiquadFilter(),e=ac.createGain();
+ o.type='triangle';o2.type='sine';o.frequency.value=f;o2.frequency.value=f*2;h.gain.value=.25;
+ fl.type='lowpass';fl.frequency.setValueAtTime(3400,t);fl.frequency.exponentialRampToValueAtTime(1000,t+d);
+ e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(v,t+.008);e.gain.exponentialRampToValueAtTime(.0001,t+d);
+ o.connect(fl);o2.connect(h);h.connect(fl);fl.connect(e);e.connect(mus);e.connect(dsend);
+ o.start(t);o2.start(t);o.stop(t+d+.05);o2.stop(t+d+.05)}
+function mBass(m,t,d,v){const o=ac.createOscillator(),e=ac.createGain(),fl=ac.createBiquadFilter();
+ o.type='triangle';o.frequency.value=mf(m);fl.type='lowpass';fl.frequency.value=700;
+ e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(v,t+.015);e.gain.exponentialRampToValueAtTime(.0001,t+d);
+ o.connect(fl);fl.connect(e);e.connect(mus);o.start(t);o.stop(t+d+.05)}
+function mPad(ms,t,d,v){ms.forEach(m=>{const o=ac.createOscillator(),e=ac.createGain();o.type='sine';o.frequency.value=mf(m);o.detune.value=(Math.random()-.5)*10;
+ e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(v,t+d*.35);e.gain.linearRampToValueAtTime(.0001,t+d);
+ o.connect(e);e.connect(mus);o.start(t);o.stop(t+d+.05)})}
+function mKick(t,v){const o=ac.createOscillator(),e=ac.createGain();o.frequency.setValueAtTime(140,t);o.frequency.exponentialRampToValueAtTime(48,t+.12);
+ e.gain.setValueAtTime(v,t);e.gain.exponentialRampToValueAtTime(.0001,t+.18);o.connect(e);e.connect(mus);o.start(t);o.stop(t+.2)}
+function mHat(t,v,d=.05){const s=ac.createBufferSource(),fl=ac.createBiquadFilter(),e=ac.createGain();s.buffer=nbuf;fl.type='highpass';fl.frequency.value=7000;
+ e.gain.setValueAtTime(v,t);e.gain.exponentialRampToValueAtTime(.0001,t+d);s.connect(fl);fl.connect(e);e.connect(mus);s.start(t,Math.random()*.5,d+.02)}
 function mPlay(n,t){
  const s=n%8,bar=Math.floor(n/8),bi=bar%16,lp=Math.floor(bar/16)%4,tr=KEYS[lp],c=CH[PROG[bi]],bm=c.b+tr;
  if(s===0)mPad(c.t.map(x=>x+tr),t,STEP*9.5,.03);
@@ -615,13 +641,13 @@ function draw(t){
   const P2={x:p.x+L.dx,y:p.y+L.dy,face:p.face,seat:p.seat,anim:an,z0:L.dz,skin:p.id===me?MY_SKIN:p.skin,ck:p.ck,ct:p.ct,fx:p.fx};
   list.push({d:sat?(ss?ss.x+ss.y+1+p.seat:1+p.seat):p.x+p.y,f:()=>{
    if(p.id===me&&!sat){const[a,b]=S(p.x,p.y,4);g.strokeStyle='#fff';g.lineWidth=3*A;g.beginPath();g.ellipse(a,b,20*A,10*A,0,0,6.283);g.stroke()}
-   drawPlayer(t,P2,p.color);pFX(p,P2,t);const[a,b]=S(P2.x,P2.y,(sat?86:78)+L.dz);g.font='800 '+Math.max(11,12*A*1.6)+'px system-ui';g.textAlign='center';g.lineWidth=3;g.strokeStyle='rgba(39,64,90,.8)';
+   drawPlayer(t,P2,p.color);pFX(p,P2,t);const[a,b]=S(P2.x,P2.y,(sat?112:104)+L.dz);g.font='800 '+Math.max(11,12*A*1.6)+'px system-ui';g.textAlign='center';g.lineWidth=3;g.strokeStyle='rgba(39,64,90,.8)';
    const nm=(p.id===me&&!isSolo?'YOU':p.name)+(p.off?' 💤':'');g.strokeText(nm,a,b);g.fillStyle='#fff';g.fillText(nm,a,b)}})});
  list.sort((a,b)=>a.d-b.d).forEach(e=>e.f());drawFX(t);
  stations.forEach(s=>stBadge(s,t));drawPointer(t);
  parts.forEach(p=>{const[a,b]=S(p.x,p.y,p.z);g.globalAlpha=1-p.t/p.l;g.fillStyle=p.c;g.beginPath();g.arc(a,b,4*A+2,0,6.283);g.fill()});g.globalAlpha=1;
  g.font='800 '+Math.max(16,24*A*1.3)+'px system-ui';g.textAlign='center';
- if(fullNode){const[a,b]=S(fullNode.x,fullNode.y,(fullNode.k==='tree'?90:50)+6);g.textAlign='center';g.font='700 '+Math.round(24*A)+'px system-ui';g.fillStyle='#fff';g.fillText('✅',a,b);g.font='800 '+Math.round(11*A)+'px system-ui';g.lineWidth=3;g.strokeStyle='#27405a';g.strokeText('FULL',a,b+13*A);g.fillStyle='#fff';g.fillText('FULL',a,b+13*A)} // steady 'collection complete' sign
+ if(fullNode){const[a,b]=S(fullNode.x,fullNode.y,(fullNode.k==='tree'?90:50)+34);g.textAlign='center';g.font='700 '+Math.round(36*A)+'px system-ui';g.fillStyle='#fff';g.fillText('✅',a,b);g.font='800 '+Math.round(17*A)+'px system-ui';g.lineWidth=4;g.strokeStyle='#27405a';g.strokeText('FULL',a,b+27*A);g.fillStyle='#fff';g.fillText('FULL',a,b+27*A)} // steady 'collection complete' sign
  floats.forEach(f=>{const[a,b]=S(f.x,f.y,f.z+f.t*40);g.globalAlpha=1-f.t/.9;g.lineWidth=4;g.strokeStyle='#27405a';g.strokeText(f.s,a,b);g.fillStyle='#fff';g.fillText(f.s,a,b)});g.globalAlpha=1;
  ambient(t);
  // danger vignette (last 10s, or while the island collapses)
@@ -808,7 +834,7 @@ function drawPlayer(t,P,col){
   const RR=(a,b,w,h,r,fill)=>{g.beginPath();g.roundRect(q(a),q(b),q(w),q(h),q(r));g.fillStyle=fill;g.fill()};
   let clipped=false;if(drown){g.save();clipped=true;g.beginPath();g.rect(x-80*A,y-190*A,160*A,190*A+3*A);g.clip()} // everything below the water line is hidden
   if(eaten&&fa>260&&fa<760){const u=(fa-260)/500;drawJaws(x,y,A,1-u*.2,fa);if(clipped)g.restore();return} // swallowed: only the snapping jaws are seen
-  g.save();g.translate(x+(an==='push'?f*7*s:0),by);g.scale(1/sq,sq);g.scale(1.14,1.14); // overall character size
+  g.save();g.translate(x+(an==='push'?f*7*s:0),by);g.scale(1/sq,sq);g.scale(1.3,1.3); // overall character size (raise/lower to resize the hero)
 
   // ---- bare legs, feet and furry ankle cuffs
   if(!sit)[-1,1].forEach(d=>{
@@ -834,19 +860,21 @@ function drawPlayer(t,P,col){
   E(-1,(-(bh+4)+BY-2)/2,1.5,1.5,'#b8aa90');
 
   // ---- arms with furry wrist cuffs
-  [-1,1].forEach(d=>{
+  [-1,1].forEach(d=>{const swg=an==='walk'?Math.sin(t/110)*d:0; // arms swing a little while walking
+    g.save();g.translate(q(d*swg*.6),q(swg*2.6));
     E(d*15.5,-(bh-2),3.3,7,SK,d*.12);
     RR(d*15.5-3.9,-(bh-3),7.8,4.4,2,FURD);for(let i=0;i<3;i++)E(d*15.5-2.6+i*2.6,-(bh-3),1.2,1.1,FUR);
     E(d*15.9,-(bh-9.5),3,3,SK);
+    g.restore();
   });
 
   // ---- head: ears, face (chibi: the whole head group is drawn ~16% bigger, pivoting at the neck)
   g.save();g.translate(0,q(HY+16));g.scale(1.1,1.1);g.translate(0,-q(HY+16));
   E(-14.8,HY+3,3.6,3.6,SK);E(14.8,HY+3,3.6,3.6,SK);E(-14.8,HY+3,1.7,1.9,SKD);E(14.8,HY+3,1.7,1.9,SKD);
   // face: rounded-square with a roomy chin; cel-shaded (no outline): shade on the lower-right, light on the upper-left
-  {const hw=15.4,top=HY-15,bot=HY+19,r=13.5;
+  {const hw=13.6,top=HY-15,bot=HY+22.5,r=12.6; // narrower cheeks, longer chin
    g.beginPath();g.moveTo(q(-hw+r),q(top));g.lineTo(q(hw-r),q(top));g.arcTo(q(hw),q(top),q(hw),q(top+r),q(r));g.lineTo(q(hw),q(bot-r));g.arcTo(q(hw),q(bot),q(hw-r),q(bot),q(r));g.lineTo(q(-hw+r),q(bot));g.arcTo(q(-hw),q(bot),q(-hw),q(bot-r),q(r));g.lineTo(q(-hw),q(top+r));g.arcTo(q(-hw),q(top),q(-hw+r),q(top),q(r));g.closePath();
-   g.fillStyle=SKD;g.fill();g.save();g.clip();E(-1.6,HY+1,16,19.5,SK);E(-6,HY-6,9,7,'rgba(255,255,255,.3)');g.restore()}
+   g.fillStyle=SKD;g.fill();g.save();g.clip();E(-1.4,HY+1.5,14.6,21,SK);E(-6,HY-6,9,7,'rgba(255,255,255,.3)');g.restore()}
   E(f*3-9.5,HY+10.5,3,1.8,'rgba(255,140,120,.32)');E(f*3+9.5,HY+10.5,3,1.8,'rgba(255,140,120,.32)'); // blush
   // big glossy eyes, brown brows, small nose, gentle smile
   [-1,1].forEach(d=>{const ex=f*3+d*6.2,ey=HY+4;
@@ -854,8 +882,8 @@ function drawPlayer(t,P,col){
     g.strokeStyle='#9a5b2e';g.lineWidth=q(1.8);g.lineCap='round';g.beginPath();g.arc(q(ex),q(HY-.2+d*(-.4)),q(4.6),Math.PI*1.18,Math.PI*1.82);g.stroke()});
   E(f*3,HY+8.6,2.2,1.9,'#eeb08a');E(f*3-.5,HY+8,.8,.6,'rgba(255,255,255,.55)');
   if(an!=='fail'&&an!=='success'){const mx=f*3+.6,my=HY+12.4; // open, smiling 2D mouth
-   g.beginPath();g.moveTo(q(mx-4.4),q(my-.6));g.quadraticCurveTo(q(mx),q(my+1.4),q(mx+4.4),q(my-.6));g.quadraticCurveTo(q(mx+3.2),q(my+5.6),q(mx),q(my+5.6));g.quadraticCurveTo(q(mx-3.2),q(my+5.6),q(mx-4.4),q(my-.6));g.closePath();
-   g.fillStyle='#8f2f3a';g.fill();g.save();g.clip();E(mx,my+5.2,2.7,1.9,'#ff8d9a');g.fillStyle='#fff';g.fillRect(q(mx-3.4),q(my-.8),q(6.8),q(1.5));g.restore()}
+   g.beginPath();g.moveTo(q(mx-4.4),q(my-.6));g.quadraticCurveTo(q(mx),q(my+1.4),q(mx+4.4),q(my-.6));g.quadraticCurveTo(q(mx+3),q(my+3.3),q(mx),q(my+3.3));g.quadraticCurveTo(q(mx-3),q(my+3.3),q(mx-4.4),q(my-.6));g.closePath();
+   g.fillStyle='#8f2f3a';g.fill();g.save();g.clip();E(mx,my+3,2.2,1.2,'#ff8d9a');g.fillStyle='#fff';g.fillRect(q(mx-3.4),q(my-.8),q(6.8),q(1.1));g.restore()} // half-open smile
 
   // ---- light-brown side-swept hair
   g.beginPath();g.moveTo(q(-15.2),q(HY+3));g.lineTo(q(-15.7),q(HY));g.arc(0,q(HY),q(15.7),Math.PI,Math.PI*2);g.lineTo(q(15.2),q(HY+3));
@@ -1038,7 +1066,7 @@ net('ev',e=>{
  else if(e.t==='e'){if(e.tid===myTid)toast('YOUR TEAM IS ELIMINATED');else toast(tname(e.tid)+' eliminated')}});
 net('stage',d=>{snd(520,.4,'triangle',.1,1.6);const mp=myP(),left=mode==='coop'&&!isSolo&&!!mp&&mp.status==='failed'; // left behind = not seated when the vehicle left
  if(mode==='coop'&&isSolo)saveDone(d.done); // solo level completed: may unlock skins / scenery
- banner((mode==='coop'?'LEVEL ':'ISLAND ')+d.done+' COMPLETE<small>'+(left?'YOU WERE LEFT BEHIND — YOU WILL SPECTATE':'NEXT: '+esc(d.name))+'</small>',0,left,true)});
+ banner((mode==='coop'?'LEVEL ':'ISLAND ')+d.done+' COMPLETE<small>'+(left?'YOU WERE LEFT BEHIND — YOU WILL SPECTATE':'<span class="nx">NEXT: '+esc(d.name)+'</span>')+'</small>',0,left,true)});
 net('over',d=>{if(d.mode==='coop')saveBest(d.solo?'solo':'mp',d.solo?(d.level||1):((d.reach&&d.reach[me])||d.level||1));if(reviveOffer(d))return;const win=d.winner!=null&&d.winner===myTid,coopWin=d.mode==='coop'&&d.reason==='ESCAPED';
  const meP=myP(),mineEsc=meP&&meP.status==='escaped';
  snd((d.mode==='coop'?(coopWin&&mineEsc):win)?660:200,.5,'triangle',.12,(d.mode==='coop'?(coopWin&&mineEsc):win)?2:.5);
@@ -1139,20 +1167,20 @@ function specTarget(me_){const c=[...players.values()].filter(q=>q.id!==me&&(q.s
 // ---- objective text
 function objText(me_){
  const s=myS(),n=CFG.need;
- if(me_.status==='spectator'){const t=specTarget(me_);return 'SPECTATING'+(t!==me_&&t.name?' '+t.name.toUpperCase():'')+' — TAP TO SWITCH'}
- {const dd=[...players.values()].find(q=>q.status==='failed'&&q.tid===myTid&&q.id!==me&&q.rvLeft>0&&performance.now()-q.rvAt<1200);if(dd&&me_.status==='alive')return '🩹 STAND NEXT TO '+dd.name.toUpperCase()+' TO REVIVE ('+Math.ceil(dd.rvLeft/1000)+'s)'}
- if(st==='COUNTDOWN')return CFG.pvp?'GET READY — PUSH UNLOCKS AT GO':'GET READY';
- if(mode==='coop'&&!isSolo){const sm=myS();if(sm&&sm.dep&&!sm.ln){const n=Math.max(0,Math.ceil((sm.dep-nowS())/1000));if(me_.status==='boarded')return 'LEAVING IN '+n+'s — STEER TO GET OFF';if(me_.status==='alive')return '🚀 VEHICLE LEAVES IN '+n+'s — GET ABOARD!'}if(me_.status==='boarded')return 'LAUNCHING!'}
+ if(me_.status==='spectator'){const t=specTarget(me_);return 'SPECTATING'+(t!==me_&&t.name?' '+t.name.toUpperCase():'')}
+ {const dd=[...players.values()].find(q=>q.status==='failed'&&q.tid===myTid&&q.id!==me&&q.rvLeft>0&&performance.now()-q.rvAt<1200);if(dd&&me_.status==='alive')return '🩹 REVIVE '+dd.name.toUpperCase()+' ('+Math.ceil(dd.rvLeft/1000)+'s)'}
+ if(st==='COUNTDOWN')return CFG.pvp?'GET READY':'GET READY';
+ if(mode==='coop'&&!isSolo){const sm=myS();if(sm&&sm.dep&&!sm.ln){const n=Math.max(0,Math.ceil((sm.dep-nowS())/1000));if(me_.status==='boarded')return 'LEAVING IN '+n+'s — STEER OFF';if(me_.status==='alive')return '🚀 LEAVES IN '+n+'s — BOARD!'}if(me_.status==='boarded')return 'LAUNCHING!'}
  if(me_.status==='boarded'||me_.status==='escaped')return 'LAUNCHING!';
- if(me_.status==='failed'){if(me_.rvLeft>0&&performance.now()-me_.rvAt<1200)return '🐊 EATEN — A TEAMMATE CAN REVIVE YOU ('+Math.ceil(me_.rvLeft/1000)+'s)';return mode==='tourney'?'YOUR ISLAND SANK':mode==='coop'&&!isSolo?'ELIMINATED — HELP FROM THE SIDELINES':'YOU DROWNED'}
+ if(me_.status==='failed'){if(me_.rvLeft>0&&performance.now()-me_.rvAt<1200)return '🐊 EATEN — WAIT FOR REVIVE ('+Math.ceil(me_.rvLeft/1000)+'s)';return mode==='tourney'?'YOUR ISLAND SANK':mode==='coop'&&!isSolo?'ELIMINATED':'YOU DROWNED'}
  if(!s)return '';
- if(s.dead&&!s.done)return 'YOUR STATION SANK — SURVIVE!';
+ if(s.dead&&!s.done)return 'STATION SANK — SURVIVE!';
  if(s.done)return 'BOARD YOUR '+VN[s.kind]+'!';
  const has=k=>s[k]+inv[k]>=n[k],near=Math.hypot(me_.x-s.x,me_.y-s.y)<CFG.buildR;
- if(has('w')&&has('l')&&has('c'))return near?'BUILD YOUR '+VN[s.kind]+'!':'GO TO YOUR STATION!';
- if(CFG.energy&&n.c&&!has('c')&&has('w')&&has('l')){const left=CFG.duration*CFG.energy.energySpawnStart-el;return left>0?EN.ic+' '+EN.name.toUpperCase()+' APPEARS IN '+Math.ceil(left)+'s':EN.ic+' GRAB THE '+EN.name.toUpperCase()+' BEFORE THEY DO!'}
- if(s.w+s.l+s.c+inv.w+inv.l+inv.c===0)return mode==='coop'?'COLLECT WOOD AND LEAVES TO BUILD A '+VN[s.kind]:mode==='last'?'COLLECT & BUILD — ESCAPE FIRST!':'BUILD A '+VN[s.kind]+' AND ESCAPE';
- return CFG.pvp?'COLLECT & BUILD — OR PUSH A RIVAL!':'KEEP COLLECTING';
+ if(has('w')&&has('l')&&has('c'))return near?'BUILD YOUR '+VN[s.kind]+'!':'GO TO STATION!';
+ if(CFG.energy&&n.c&&!has('c')&&has('w')&&has('l')){const left=CFG.duration*CFG.energy.energySpawnStart-el;return left>0?EN.ic+' '+EN.name.toUpperCase()+' APPEARS IN '+Math.ceil(left)+'s':EN.ic+' GRAB THE '+EN.name.toUpperCase()+' FIRST!'}
+ if(s.w+s.l+s.c+inv.w+inv.l+inv.c===0)return mode==='coop'?'GATHER WOOD & LEAVES':mode==='last'?'BUILD & ESCAPE FIRST!':'BUILD & ESCAPE!';
+ return CFG.pvp?'COLLECT, BUILD OR PUSH!':'KEEP COLLECTING';
 }
 // ---- HUD: inventory (what to collect, have/remaining) is separate from build progress (bars, % of the vehicle)
 const RC={w:{ic:'🪵',c:'#c98a52'},l:{ic:'🍃',c:'#4fbf62'},c:{ic:EN.ic,c:EN.col}};
