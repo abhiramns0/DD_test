@@ -20,7 +20,7 @@ const srv=http.createServer((q,s)=>{
     const want=['/icons/icon-192.png','/icons/icon-512.png','/icons/icon-maskable-512.png','/icons/apple-touch-icon.png','/icons/favicon-32.png','/icons/og-image.jpg','/icons/title.png'],o={};
     want.forEach(w=>{const f=findStatic(w);o[w]=f?{found:true,bytes:fs.statSync(f).size}:{found:false}});
     s.setHeader('Content-Type','application/json');s.end(JSON.stringify(o,null,1));return}
-  if(u==='/health/auth'){s.setHeader('Content-Type','application/json');s.end(JSON.stringify(Object.assign(auth.status(),{clientUrl:!!process.env.SUPABASE_URL,clientKey:!!process.env.SUPABASE_ANON_KEY})));return} // which sign-in settings are present (no secrets)
+  if(u==='/health/auth'){s.setHeader('Content-Type','application/json');s.end(JSON.stringify(Object.assign(auth.status(),{clientUrl:!!auth.publicUrl,clientKey:!!auth.publicKey})));return} // which sign-in settings are present (no secrets)
   if(u==='/health/db'){s.setHeader('Content-Type','application/json');s.end(JSON.stringify(board.status()));return} // {db:'ok'|'down'|'not_configured',queued:n} - no secrets
   if(u==='/admin/clear-leaderboard'){
     const qs=new URLSearchParams((q.url.split('?')[1])||''),key=process.env.ADMIN_KEY||'';
@@ -32,7 +32,7 @@ const srv=http.createServer((q,s)=>{
   if(rel.includes('..')){s.statusCode=403;s.end('forbidden');return}
   const send=(file,rp)=>fs.readFile(file,(e,b)=>{
     if(e){s.statusCode=404;s.end('not found');return}
-    if(rp==='/index.html'){const proto=String(q.headers['x-forwarded-proto']||'http').split(',')[0],origin=(process.env.PUBLIC_URL||'').replace(/\/+$/,'')||(proto+'://'+q.headers.host);b=Buffer.from(b.toString('utf8').split('%%ORIGIN%%').join(origin).split('%%SB_URL%%').join(process.env.SUPABASE_URL||'').split('%%SB_KEY%%').join(process.env.SUPABASE_ANON_KEY||''))} // SB_URL / SB_KEY are PUBLIC values (project URL + anon/publishable key) for the browser sign-in // absolute URLs for share previews (og:image)
+    if(rp==='/index.html'){const proto=String(q.headers['x-forwarded-proto']||'http').split(',')[0],origin=(process.env.PUBLIC_URL||'').replace(/\/+$/,'')||(proto+'://'+q.headers.host);b=Buffer.from(b.toString('utf8').split('%%ORIGIN%%').join(origin).split('%%SB_URL%%').join(auth.clientOk?auth.publicUrl:'').split('%%SB_KEY%%').join(auth.clientOk?auth.publicKey:''))} // SB_URL / SB_KEY are PUBLIC values (project URL + anon/publishable key) for the browser sign-in // absolute URLs for share previews (og:image)
     s.setHeader('Content-Type',MIME[path.extname(file)]||'application/octet-stream');
     s.setHeader('Cache-Control',NOCACHE.has(rp)?'no-cache':rp.startsWith('/icons/')?'public, max-age=3600':'public, max-age=86400');
     if(rp==='/sw.js')s.setHeader('Service-Worker-Allowed','/');
