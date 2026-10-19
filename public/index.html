@@ -236,7 +236,7 @@ addEventListener('resize',resize);resize();
 // Two independent switches: 🔊 = game sound effects, 🎵 = background music + ocean ambience.
 let ac,muted=false,musicOff=false,amb,mbus,mus,dsend,nbuf,mTimer=null,mNext=0,mStep=0;
 const AMB_VOL=.03,   // ocean ambience level (was .05)
-      MUSIC_VOL=.15;  // background music level; lower this if you want it even softer
+      MUSIC_VOL=.22;  // background music level; lower this if you want it even softer
 try{muted=localStorage.getItem('si_sfx_off')==='1';musicOff=localStorage.getItem('si_mus_off')==='1'}catch(e){}
 function snd(f,d=.1,type='sine',v=.08,slide=0){if(!ac||muted)return;const o=ac.createOscillator(),x=ac.createGain();o.type=type;o.frequency.value=f;if(slide)o.frequency.exponentialRampToValueAtTime(f*slide,ac.currentTime+d);x.gain.setValueAtTime(v,ac.currentTime);x.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+d);o.connect(x).connect(ac.destination);o.start();o.stop(ac.currentTime+d)}
 // ---- music: a generated, endlessly varying island theme (no audio files needed)
@@ -247,11 +247,11 @@ const CH={C:{b:48,t:[60,64,67]},Am:{b:45,t:[57,60,64]},F:{b:53,t:[60,65,69]},G:{
 const PROG=['C','Am','F','G','C','Am','F','G','F','G','Em','Am','F','G','Em','Am'];
 // Pace follows the game (the tune itself is the original): calm in menus, quicker with each level, faster again as the timer runs low.
 let mBpm=104,mDL=null;
-function pickBpm(){
+function pickBpm(){ // speed is fixed per level (faster every level), and only jumps up for the last 10 seconds. End Game is always fast.
   if(st==='MENU'||st==='LOBBY'||st==='GAME_OVER')return 92;
-  const L=mode==='coop'?stage:mode==='tourney'?3+stage:6,frac=CFG.duration?Math.max(0,Math.min(1,el/CFG.duration)):0,late=st==='ESCAPE'||st==='COLLAPSE'||st==='RAFT_READY';
-  const urg=st==='COUNTDOWN'?0:late||frac>.85?2:frac>.65?1:0;
-  return Math.round((mode==='last'?110:100)+Math.min(24,(L-1)*2.5)+urg*6)}
+  if(mode==='last')return 124;
+  const L=mode==='coop'?stage:3+stage,last10=!!CFG.duration&&el>=0&&CFG.duration-el<=10&&st!=='COUNTDOWN';
+  return Math.round(96+Math.min(32,(L-1)*3)+(last10?16:0))}
 const MEL=[ // 8 two-bar phrases x 16 eighth-note steps (0 = rest)
  [72,0,76,0,79,0,76,72, 69,0,72,0,76,0,72,69],
  [77,0,72,0,69,0,72,0, 74,0,79,0,74,0,71,0],
@@ -640,7 +640,6 @@ function draw(t){
   const an=p.status==='failed'?'fail':p.status==='escaped'?'sit':p.anim; // escaped players stay seated in the vehicle as it leaves
   const P2={x:p.x+L.dx,y:p.y+L.dy,face:p.face,seat:p.seat,anim:an,z0:L.dz,skin:p.id===me?MY_SKIN:p.skin,ck:p.ck,ct:p.ct,fx:p.fx};
   list.push({d:sat?(ss?ss.x+ss.y+1+p.seat:1+p.seat):p.x+p.y,f:()=>{
-   if(p.id===me&&!sat){const[a,b]=S(p.x,p.y,4);g.strokeStyle='#fff';g.lineWidth=3*A;g.beginPath();g.ellipse(a,b,20*A,10*A,0,0,6.283);g.stroke()}
    drawPlayer(t,P2,p.color);pFX(p,P2,t);const[a,b]=S(P2.x,P2.y,(sat?112:104)+L.dz);g.font='800 '+Math.max(11,12*A*1.6)+'px system-ui';g.textAlign='center';g.lineWidth=3;g.strokeStyle='rgba(39,64,90,.8)';
    const nm=(p.id===me&&!isSolo?'YOU':p.name)+(p.off?' 💤':'');g.strokeText(nm,a,b);g.fillStyle='#fff';g.fillText(nm,a,b)}})});
  list.sort((a,b)=>a.d-b.d).forEach(e=>e.f());drawFX(t);
@@ -826,7 +825,7 @@ function drawPlayer(t,P,col){
   if(an==='fail'){col='#b9a0a0';z=-Math.min(stT,1)*12}
   if(drown){z=-fa/2400*30;sq=1+Math.sin(fa/90)*.05} // sinks below the waterline
   if(eaten){sq=1+Math.sin(fa/35)*.12}
-  if(!z0){ell(px,py,5,14,'rgba(40,60,50,.28)');g.beginPath();g.ellipse(x,y,16*A,8*A,0,0,6.283);g.lineWidth=3.2*A;g.strokeStyle='#fff';g.globalAlpha=.9;g.stroke();g.globalAlpha=1;g.beginPath();g.ellipse(x,y,16*A,8*A,0,0,6.283);g.lineWidth=2*A;g.strokeStyle=col;g.stroke()} // team-colour ring under the feet
+  if(!z0)ell(px,py,5,14,'rgba(40,60,50,.28)'); // soft shadow only (no rings)
 
   const by=y-z*A,sit=an==='sit',bh=sit?16:24,s=A,f=P.face,q=v=>v*s,H=sit?-3:-11,HY=-(bh+22);
   const SKN=skinDef(P.skin),HAT=SKN.hat||TH.hat,SK='#f7cba4',SKD='#e6a47c',[FUR,FURL,FURD]=SKN.tun||['#8c6a47','#b8925f','#5f4630'],LEA='#6b4a2e';
@@ -872,9 +871,9 @@ function drawPlayer(t,P,col){
   g.save();g.translate(0,q(HY+16));g.scale(1.1,1.1);g.translate(0,-q(HY+16));
   E(-14.8,HY+3,3.6,3.6,SK);E(14.8,HY+3,3.6,3.6,SK);E(-14.8,HY+3,1.7,1.9,SKD);E(14.8,HY+3,1.7,1.9,SKD);
   // face: rounded-square with a roomy chin; cel-shaded (no outline): shade on the lower-right, light on the upper-left
-  {const hw=13.6,top=HY-15,bot=HY+22.5,r=12.6; // narrower cheeks, longer chin
+  {const hw=12.4,top=HY-15,bot=HY+19.6,r=11.8; // narrower cheeks, longer chin
    g.beginPath();g.moveTo(q(-hw+r),q(top));g.lineTo(q(hw-r),q(top));g.arcTo(q(hw),q(top),q(hw),q(top+r),q(r));g.lineTo(q(hw),q(bot-r));g.arcTo(q(hw),q(bot),q(hw-r),q(bot),q(r));g.lineTo(q(-hw+r),q(bot));g.arcTo(q(-hw),q(bot),q(-hw),q(bot-r),q(r));g.lineTo(q(-hw),q(top+r));g.arcTo(q(-hw),q(top),q(-hw+r),q(top),q(r));g.closePath();
-   g.fillStyle=SKD;g.fill();g.save();g.clip();E(-1.4,HY+1.5,14.6,21,SK);E(-6,HY-6,9,7,'rgba(255,255,255,.3)');g.restore()}
+   g.fillStyle=SKD;g.fill();g.save();g.clip();E(-1.2,HY+1.2,13.4,18.6,SK);E(-6,HY-6,9,7,'rgba(255,255,255,.3)');g.restore()}
   E(f*3-9.5,HY+10.5,3,1.8,'rgba(255,140,120,.32)');E(f*3+9.5,HY+10.5,3,1.8,'rgba(255,140,120,.32)'); // blush
   // big glossy eyes, brown brows, small nose, gentle smile
   [-1,1].forEach(d=>{const ex=f*3+d*6.2,ey=HY+4;
@@ -985,7 +984,7 @@ net('round',d=>{CFG=d.cfg;mode=d.mode;stage=d.stage;stages=d.stages;stageName=d.
  players=new Map();inv={w:0,l:0,c:0};applyWorld(d.world,true);stT=0;st='COUNTDOWN';
  show('none');$('hud').style.display='block';$('banner').style.display='none';
  crocs.clear();invSig='';bSig='';LR=d.lr||null;drops=(d.drops||[]).map(x=>({...x}));tracers=[];pw={sh:0,gn:0};rtime=0;zoomT=1;zoomK=INTRO_ZOOM;introTotal=0;$('zoomL').textContent='1x';$('zoom').classList.remove('on');
- if(mode==='last'&&LR)toast('ROUND '+LR.n+' / '+LR.total);else if(mode==='tourney')toast('ISLAND '+stage+' / '+stages+' — '+stageName);else if(mode==='coop')toast('LEVEL '+stage+(CFG.crocN?'  🐊 watch out!':'')+(CFG.spdK>1.001?'  ⚡ speed x'+CFG.spdK.toFixed(2):''));
+ if(mode==='last'&&LR)toast('ROUND '+LR.n+' / '+LR.total);else if(mode==='tourney')toast('ISLAND '+stage+' / '+stages+' — '+stageName);;
  if(mode==='coop'){const bk=d.solo?'solo':'mp',mp0=myP();if(!(mp0&&mp0.status==='spectator')){if(d.stage<=1||runBase[bk]==null)runBase[bk]=getBest(bk);saveBest(bk,d.stage)}} // level reached = new best, even if the player quits before the run ends
  needSync=true;needAt=performance.now();mvHist.clear();corrAcc.x=corrAcc.y=0; // new level: adopt the server's spawn position before moving
  const p=myP();if(p){cam.x=p.x;cam.y=p.y}renderBoard();
@@ -1029,7 +1028,7 @@ net('ev',e=>{
   if(o.k==='crystal')popEnergy(o,hi,mine);else add(o.x,o.y,hi,o.k==='tree'||o.k==='log'?'#9b6b43':'#6fcf5a',mine?6:3);
   if(mine){floats.push({x:o.x,y:o.y,z:o.k==='tree'?90:50,t:0,s:RES_ICON[o.k]||'+1'});snd(o.k==='bush'?620:o.k==='crystal'?880:420,.12,'triangle',.07,1.6)}else snd(o.k==='tree'?300:420,.06,'triangle',.02)}
  else if(e.t==='b'){const s=stations[e.s]||{x:0,y:0};if(e.p===me)lastBuild=performance.now();add(s.x+rand(-30,30),s.y+rand(-30,30),10,Math.random()<.5?'#e0b070':'#7ddc6a',2,60);snd(180+prog(s)*260,.06,'square',e.p===me?.04:.015)}
- else if(e.t==='o'){const p=players.get(e.p),s=stations[e.s];if(p&&s)floats.push({x:s.x,y:s.y,z:110,t:0,s:p.name+' boarded!'})}
+ else if(e.t==='o'){const p=players.get(e.p),s=stations[e.s];if(p&&s&&e.p===me)floats.push({x:s.x,y:s.y,z:110,t:0,s:'YOU boarded!'})}
  else if(e.t==='r'){const s=stations[e.s];if(!s)return;add(s.x,s.y,30,'#fff',24,160);const mine=s.tid===myTid;
   floats.push({x:s.x,y:s.y,z:120,t:0,s:mode==='coop'?'RAFT COMPLETE':(mine?VN[s.kind]+' READY — BOARD!':tname(s.tid)+' READY!')});
   if(mine||mode==='coop')snd(523,.4,'triangle',.1,1.5);else snd(330,.25,'square',.05,1.3)}
