@@ -3,7 +3,13 @@
 // Env (server only):  SUPABASE_URL, SUPABASE_ANON_KEY  -> sign-in checking.   SUPABASE_SERVICE_ROLE_KEY -> "Delete account" only.
 // If SUPABASE_URL / SUPABASE_ANON_KEY are missing the game still runs: everyone is simply a guest.
 // A signed-in player's leaderboard id = Supabase user id without dashes (32 hex chars) - fits leaderboard.js validUid().
-const URL_=(process.env.SUPABASE_URL||'').replace(/\/+$/,''),ANON=process.env.SUPABASE_ANON_KEY||'',SVC=process.env.SUPABASE_SERVICE_ROLE_KEY||'';
+const clean=v=>String(v||'').trim().replace(/^["']+|["']+$/g,'').trim();            // Render values pasted with quotes / spaces / newlines
+const fixUrl=v=>{v=clean(v);if(!v)return'';if(!/^https?:\/\//i.test(v))v='https://'+v;return v.replace(/\/(rest|auth)\/v1.*$/i,'').replace(/\/+$/,'')}; // adds a missing https://, drops a trailing /rest/v1 or slash
+const URL_=fixUrl(process.env.SUPABASE_URL),ANON=clean(process.env.SUPABASE_ANON_KEY).replace(/^Bearer\s+/i,''),SVC=clean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+// SAFETY: the anon key goes into the page for everyone. If someone pasted the secret / service_role key there by mistake, never publish it.
+const jwtRole=k=>{try{return JSON.parse(Buffer.from(k.split('.')[1],'base64').toString('utf8')).role||''}catch(e){return''}};
+const keyIsSecret=k=>/^sb_secret_/.test(k)||jwtRole(k)==='service_role';
+const keyShape=k=>!k?'missing':keyIsSecret(k)?'SECRET_KEY_IN_ANON_SLOT':/^sb_publishable_/.test(k)?'publishable':k.split('.').length===3?'jwt':'unknown';
 
 function create(log=console){
   const configured=!!(URL_&&ANON),canDelete=!!(URL_&&SVC),cache=new Map();
@@ -25,6 +31,10 @@ function create(log=console){
     const r=await fetch(URL_+'/auth/v1/admin/users/'+encodeURIComponent(id),{method:'DELETE',headers:h,signal:AbortSignal.timeout(8000)});
     if(!r.ok&&r.status!==404)throw new Error('could not delete the login ('+r.status+')');
     for(const[k,v]of cache)if(v.u.id===id)cache.delete(k)}
-  return{verify,deleteUser,configured,canDelete,status:()=>({configured,canDelete})};
+  const pubKey=keyIsSecret(ANON)?'':ANON;                                   // what the browser may receive
+  if(ANON&&!pubKey)log.error('[auth] SUPABASE_ANON_KEY contains a SECRET key. It was NOT sent to browsers. Put the anon / publishable key there instead.');
+  const clientOk=!!(/^https?:\/\/[^/]+/.test(URL_)&&pubKey);
+  return{verify,deleteUser,configured,canDelete,publicUrl:URL_,publicKey:pubKey,clientOk,
+    status:()=>({configured,canDelete,urlOk:/^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)$/i.test(URL_),keyShape:keyShape(ANON),clientOk})};
 }
 module.exports={create};
