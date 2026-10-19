@@ -171,7 +171,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 </style>
 <script>window.SERVER_URL="";/* set to your Render URL if the client is hosted elsewhere (e.g. Vercel) */</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><!-- sign-in (Google / Apple / email). If it cannot load the game still works as guest. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script>window.supabase||document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script><!-- sign-in (Google / Apple / email). If it cannot load the game still works as guest. -->
 </head><body>
 <canvas id="c"></canvas>
 <div id="hud"><div id="top"><div id="lvl"></div><div id="inv"></div>
@@ -1328,10 +1328,12 @@ const UID=(()=>{let u=null;try{u=localStorage.getItem('si_uid')}catch(e){}if(!u|
 // ---------- accounts: Google / Apple / email (code + link) through Supabase Auth ----------
 // SB_URL / SB_KEY are PUBLIC values the server fills in from the SUPABASE_URL / SUPABASE_ANON_KEY environment variables (or set window.SB_URL / window.SB_KEY if the client is hosted elsewhere).
 // Without them (or if the Supabase script cannot load) the game simply runs as guest-only: no sign-in buttons appear.
-const SB_URL=window.SB_URL||'%%SB_URL%%',SB_KEY=window.SB_KEY||'%%SB_KEY%%';
-const AUTH_ON=/^https?:\/\//.test(SB_URL)&&!!SB_KEY&&SB_KEY.indexOf('%%')!==0&&!!window.supabase;
+const SB_URL=String(window.SB_URL||'%%SB_URL%%').trim(),SB_KEY=String(window.SB_KEY||'%%SB_KEY%%').trim();
+const AUTH_ON=/^https?:\/\//.test(SB_URL)&&!!SB_KEY&&SB_KEY.indexOf('%%')<0&&!!window.supabase;
+if(!AUTH_ON)console.warn('[auth] sign-in hidden ->',!/^https?:\/\//.test(SB_URL)?'Supabase URL missing/invalid on the server (check SUPABASE_URL in Render)':!SB_KEY||SB_KEY.indexOf('%%')>=0?'Supabase anon key missing (check SUPABASE_ANON_KEY in Render)':'supabase-js script did not load (blocked network/CDN)');
 const sb=AUTH_ON?window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'si_sb_auth'}}):null;
-const SHOW_APPLE=true; // set to false to hide "Continue with Apple" until Apple sign-in is configured in Supabase
+const SHOW_EMAIL=false,SHOW_APPLE=false; // Google-only for now: set to true to bring Apple / email back (configure them in Supabase first).
+// // set to false to hide "Continue with Apple" until Apple sign-in is configured in Supabase
 const OTP_LEN=6; // keep equal to Supabase > Authentication > Providers > Email > "Email OTP length"
 const URLQ=new URLSearchParams(location.search),URLH=new URLSearchParams(location.hash.replace(/^#/,''));
 const URL_ERR=URLQ.get('error_description')||URLH.get('error_description')||'',URL_CODE=URLQ.get('code')||'';
@@ -1366,7 +1368,7 @@ function openAuth(mode){const cur=[...document.querySelectorAll('.ov')].find(o=>
 async function oauth(provider){if(!sb)return;setMsg('authMsg','Opening '+(provider==='apple'?'Apple':'Google')+'…');
   try{const r=await sb.auth.signInWithOAuth({provider,options:{redirectTo:location.origin+'/'}});if(r&&r.error)throw r.error}
   catch(e){setMsg('authMsg','Couldn’t start sign-in. Please try again.')}}
-if(!SHOW_APPLE)$('ssoA').style.display='none';
+if(!SHOW_APPLE)$('ssoA').style.display='none';if(!SHOW_EMAIL)$('ssoM').style.display='none';
 $('ssoG').onclick=()=>oauth('google');$('ssoA').onclick=()=>oauth('apple');
 $('guestGo').onclick=()=>{LS.set('si_auth_seen','1');show('menu');if(!MY_NAME)openNamePop()};
 $('authBack').onclick=()=>show(authReturn);
@@ -1433,7 +1435,7 @@ async function authInit(){
   authReady=true;if(SESSION)LS.set('si_auth_seen','1');
   paintAuth();
   if(URL_ERR){toast(/expired|invalid|otp/i.test(URL_ERR)?'That sign-in link expired. Please request a new one.':'Sign-in didn’t complete. Please try again.');try{history.replaceState(null,'',location.pathname)}catch(e){}}
-  else if(URL_CODE&&!SESSION)toast('Open the email link in the same browser you started in, or type the code from the email.');
+  else if(URL_CODE&&!SESSION&&SHOW_EMAIL)toast('Open the email link in the same browser you started in, or type the code from the email.');
   if(SESSION)await sendIdent();else sendIdent();
   startFlow()}
 setTimeout(authInit,0);
