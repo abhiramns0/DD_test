@@ -247,11 +247,11 @@ const CH={C:{b:48,t:[60,64,67]},Am:{b:45,t:[57,60,64]},F:{b:53,t:[60,65,69]},G:{
 const PROG=['C','Am','F','G','C','Am','F','G','F','G','Em','Am','F','G','Em','Am'];
 // Pace follows the game (the tune itself is the original): calm in menus, quicker with each level, faster again as the timer runs low.
 let mBpm=104,mDL=null;
-function pickBpm(){ // speed is fixed per level (faster every level), and only jumps up for the last 10 seconds. End Game is always fast.
+function pickBpm(){ // each level starts faster than the last, speeds up every 15 s inside the level, and again for the last 10 s. End Game is always fast.
   if(st==='MENU'||st==='LOBBY'||st==='GAME_OVER')return 92;
   if(mode==='last')return 124;
   const L=mode==='coop'?stage:3+stage,last10=!!CFG.duration&&el>=0&&CFG.duration-el<=10&&st!=='COUNTDOWN';
-  return Math.round(96+Math.min(32,(L-1)*3)+(last10?16:0))}
+  return Math.round(96+Math.min(32,(L-1)*3)+Math.min(5,Math.max(0,Math.floor(el/15)))*3+(last10?10:0))} // +3 BPM every 15 s inside a level (max +15), +10 more in the last 10 s
 const MEL=[ // 8 two-bar phrases x 16 eighth-note steps (0 = rest)
  [72,0,76,0,79,0,76,72, 69,0,72,0,76,0,72,69],
  [77,0,72,0,69,0,72,0, 74,0,79,0,74,0,71,0],
@@ -640,7 +640,7 @@ function draw(t){
   const an=p.status==='failed'?'fail':p.status==='escaped'?'sit':p.anim; // escaped players stay seated in the vehicle as it leaves
   const P2={x:p.x+L.dx,y:p.y+L.dy,face:p.face,seat:p.seat,anim:an,z0:L.dz,skin:p.id===me?MY_SKIN:p.skin,ck:p.ck,ct:p.ct,fx:p.fx};
   list.push({d:sat?(ss?ss.x+ss.y+1+p.seat:1+p.seat):p.x+p.y,f:()=>{
-   drawPlayer(t,P2,p.color);pFX(p,P2,t);const[a,b]=S(P2.x,P2.y,(sat?112:104)+L.dz);g.font='800 '+Math.max(11,12*A*1.6)+'px system-ui';g.textAlign='center';g.lineWidth=3;g.strokeStyle='rgba(39,64,90,.8)';
+   drawPlayer(t,P2,p.color);pFX(p,P2,t);const[a,b]=S(P2.x,P2.y,(sat?132:124)+L.dz);g.font='800 '+Math.max(11,12*A*1.6)+'px system-ui';g.textAlign='center';g.lineWidth=3;g.strokeStyle='rgba(39,64,90,.8)';
    const nm=(p.id===me&&!isSolo?'YOU':p.name)+(p.off?' 💤':'');g.strokeText(nm,a,b);g.fillStyle='#fff';g.fillText(nm,a,b)}})});
  list.sort((a,b)=>a.d-b.d).forEach(e=>e.f());drawFX(t);
  stations.forEach(s=>stBadge(s,t));drawPointer(t);
@@ -868,7 +868,7 @@ function drawPlayer(t,P,col){
   });
 
   // ---- head: ears, face (chibi: the whole head group is drawn ~16% bigger, pivoting at the neck)
-  g.save();g.translate(0,q(HY+16));g.scale(1.1,1.1);g.translate(0,-q(HY+16));
+  g.save();g.translate(0,q(HY+11));g.scale(1.26,1.26);g.translate(0,-q(HY+16)); // bigger head, lifted ~5 units
   E(-14.8,HY+3,3.6,3.6,SK);E(14.8,HY+3,3.6,3.6,SK);E(-14.8,HY+3,1.7,1.9,SKD);E(14.8,HY+3,1.7,1.9,SKD);
   // face: rounded-square with a roomy chin; cel-shaded (no outline): shade on the lower-right, light on the upper-left
   {const hw=12.4,top=HY-15,bot=HY+19.6,r=11.8; // narrower cheeks, longer chin
@@ -885,8 +885,8 @@ function drawPlayer(t,P,col){
    g.fillStyle='#8f2f3a';g.fill();g.save();g.clip();E(mx,my+3,2.2,1.2,'#ff8d9a');g.fillStyle='#fff';g.fillRect(q(mx-3.4),q(my-.8),q(6.8),q(1.1));g.restore()} // half-open smile
 
   // ---- light-brown side-swept hair
-  g.beginPath();g.moveTo(q(-15.2),q(HY+3));g.lineTo(q(-15.7),q(HY));g.arc(0,q(HY),q(15.7),Math.PI,Math.PI*2);g.lineTo(q(15.2),q(HY+3));
-  [[13,-1],[9.5,-6.5],[6,-3.5],[2,-7],[-2.5,-3.8],[-7.5,-7.2],[-12,-3.5],[-15,-1]].forEach(p=>g.lineTo(q(p[0]),q(HY+p[1])));
+  g.beginPath();g.moveTo(q(-12.9),q(HY+3));g.lineTo(q(-13.6),q(HY));g.ellipse(0,q(HY),q(13.6),q(16.2),0,Math.PI,Math.PI*2);g.lineTo(q(12.9),q(HY+3)); // hair hugs the head (no gaps at the top sides)
+  [[11.4,-1],[8.2,-6.5],[5.2,-3.5],[1.8,-7],[-2.2,-3.8],[-6.5,-7.2],[-10.4,-3.5],[-12.9,-1]].forEach(p=>g.lineTo(q(p[0]),q(HY+p[1])));
   g.closePath();g.fillStyle='#b27a48';g.fill();g.save();g.clip();E(-5,HY-12,11,5,'rgba(255,225,180,.3)');E(8,HY-2,8,10,'rgba(90,50,20,.16)');g.restore(); // hair light + shade
   g.strokeStyle='#8f5d33';g.lineWidth=q(1);g.beginPath();[[-10,-8,-12,-3],[-3,-11,-4,-5],[5,-11,6,-5],[11,-8,12,-2]].forEach(l=>{g.moveTo(q(l[0]),q(HY+l[1]));g.lineTo(q(l[2]),q(HY+l[3]))});g.stroke();
   // ---- leaf crown (7 overlapping veined leaves fanning over the hair)
@@ -1112,7 +1112,8 @@ $('storeBtn').onclick=e=>{e.stopPropagation();initAudio();renderStore();openOv('
 $('setBack').onclick=$('storeBack').onclick=()=>show(ovBack);
 $('saveName').onclick=()=>{MY_NAME=cleanName($('pname').value);$('pname').value=MY_NAME;try{localStorage.setItem('si_name',MY_NAME)}catch(e){}toast(MY_NAME?'Name saved: '+MY_NAME:'Name cleared');show(ovBack)};
 function previewSkin(cvs,id){const c=cvs.getContext('2d'),sv=[g,A,CX,CY,SX,SY,cam.x,cam.y];
- g=c;A=1.15;CX=cvs.width/2;CY=cvs.height*.86;SX=SY=0;cam.x=cam.y=0;
+ g=c;A=Math.min(cvs.height/140,cvs.width/72);CX=cvs.width/2;CY=cvs.height*.9; // scaled to always fit inside the frame
+ SX=SY=0;cam.x=cam.y=0;
  try{c.clearRect(0,0,cvs.width,cvs.height);drawPlayer(0,{x:0,y:0,face:1,anim:'idle',skin:id},'#4f9dff')}finally{[g,A,CX,CY,SX,SY,cam.x,cam.y]=sv}}
 document.querySelectorAll('#vis button').forEach(b=>b.onclick=()=>socket.emit('mode',{public:b.dataset.v==='1'}));
 $('zoom').onclick=e=>{e.stopPropagation();zoomT=zoomT>1?1:2;$('zoomL').textContent=zoomT+'x';$('zoom').classList.toggle('on',zoomT>1)};
