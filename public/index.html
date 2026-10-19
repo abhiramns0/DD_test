@@ -1336,7 +1336,7 @@ const SHOW_EMAIL=false,SHOW_APPLE=false; // Google-only for now: set to true to 
 // // set to false to hide "Continue with Apple" until Apple sign-in is configured in Supabase
 const OTP_LEN=6; // keep equal to Supabase > Authentication > Providers > Email > "Email OTP length"
 const URLQ=new URLSearchParams(location.search),URLH=new URLSearchParams(location.hash.replace(/^#/,''));
-const URL_ERR=URLQ.get('error_description')||URLH.get('error_description')||'',URL_CODE=URLQ.get('code')||'';
+const URL_ERR=URLQ.get('error_description')||URLH.get('error_description')||'',URL_ERRC=URLQ.get('error_code')||URLH.get('error_code')||URLQ.get('error')||URLH.get('error')||'',URL_CODE=URLQ.get('code')||'';
 let SESSION=null,authReady=false,authReturn='menu',identRetry=0,linking=false,mailAddr='',mailBusy=false,mailPoll=0,mailCool=0;
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
 // back to a clean, fresh-install guest on this device (used by log out and delete account). Sound settings are kept.
@@ -1434,7 +1434,7 @@ async function authInit(){
   }
   authReady=true;if(SESSION)LS.set('si_auth_seen','1');
   paintAuth();
-  if(URL_ERR){toast(/expired|invalid|otp/i.test(URL_ERR)?'That sign-in link expired. Please request a new one.':'Sign-in didn’t complete. Please try again.');try{history.replaceState(null,'',location.pathname)}catch(e){}}
+  if(URL_ERR){toast(/expired|invalid|otp/i.test(URL_ERR)?'That sign-in link expired. Please request a new one.':'Sign-in didn’t complete: '+URL_ERR.slice(0,140));console.warn('[auth] sign-in error from Supabase:',URL_ERRC,URL_ERR);try{history.replaceState(null,'',location.pathname)}catch(e){}}
   else if(URL_CODE&&!SESSION&&SHOW_EMAIL)toast('Open the email link in the same browser you started in, or type the code from the email.');
   if(SESSION)await sendIdent();else sendIdent();
   startFlow()}
