@@ -267,8 +267,23 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   </div>
 </div>
  
- <div class="ov" id="sea" style="display:none;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(#1a6a8a,#0d3a50)"><div style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;display:flex;justify-content:space-between;padding:0 14px;pointer-events:none;z-index:2"><div id="seaHud" style="pointer-events:auto;background:rgba(255,255,255,.9);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25)">Open Sea</div><button class="sec" id="seaDock" style="pointer-events:auto;display:none;margin:0;font-size:14px;padding:7px 14px">🏠 DOCK</button></div><canvas id="seaCv" style="width:min(100vw,100vh);height:min(100vw,72vh);max-height:78vh;border-radius:18px;touch-action:none;cursor:grab"></canvas><p class="hint" id="seaMsg" style="color:#e8f6fc;margin-top:8px">Sailing…</p><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px"><button class="sec" id="seaAttack">⚔️ ATTACK</button><button class="sec" id="seaCollect">💎 COLLECT</button><button class="sec" id="seaBack">LEAVE SEA</button></div></div>
-<div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
+ <div class="ov" id="sea" style="display:none;padding:0;gap:0;justify-content:flex-start;background:#0d4a6a">
+  <canvas id="seaCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;touch-action:none;cursor:grab"></canvas>
+  <div style="position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none">
+    <div id="seaHud" style="background:rgba(255,255,255,.88);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25)">Open Sea</div>
+    <button class="sec" id="seaDock" style="pointer-events:auto;display:none;margin:0;font-size:14px;padding:7px 14px">🏠 DOCK</button>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;background:linear-gradient(transparent,rgba(10,40,60,.55))">
+    <p class="hint" id="seaMsg" style="color:#e8f6fc;margin:0;text-shadow:0 1px 2px rgba(0,0,0,.5)">Sailing…</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;pointer-events:auto">
+      <button class="sec" id="seaAttack" style="margin:0">⚔️ ATTACK</button>
+      <button class="sec" id="seaCollect" style="margin:0">💎 COLLECT</button>
+      <button class="sec" id="seaBack" style="margin:0">LEAVE SEA</button>
+    </div>
+  </div>
+</div>
+ 
+ <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
 <h3>GOAL</h3><p>The island is sinking! Collect 🪵 wood, 🍃 leaves and ⚡ energy, build your vehicle, board it and escape before the water wins.</p>
 <h3>CONTROLS</h3><p>Drag to move. Stand next to trees, logs, bushes and crystals to collect. Stand at your station to build, then climb aboard.</p>
 <h3>MODES</h3>
@@ -1658,15 +1673,24 @@ async function enterSea(){
   toast('Could not sail out — identity not ready. Try again.');
 }
 
+// inside enterSea when r.ok:
+SEA=r.sea;show('sea');
+try{$('lside').style.display='none';$('setBtn').style.display='none';$('side').style.display='none'}catch(e){}
+seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
+startSeaLoop();socket.emit('sea:intent',seaIntent);return
+
+// dockSea:
 async function dockSea(){
   const r=await emitP('sea:return',{},6000);
   stopSeaLoop();
   if(r&&r.ok){
     if(r.island)ISL=r.island;
-    toast('🏠 Docked at your island');
-    show('island');islPaint();islSay('Welcome back.');
+    try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none'}catch(e){}
+    const gems=(r.sea&&r.sea.treasureCount)||(ISL&&ISL.sea&&ISL.sea.treasures)||0;
+    toast(r.nearHome?'🏠 Docked · 💎 '+gems:'Returned · discoveries saved · 💎 '+gems);
+    show('island');islPaint();islSay('Welcome back. Treasures kept: 💎 '+gems);
   }else{
-    toast(r&&r.err==='too_far'?'Sail closer to home to dock.':('Dock failed'+(r&&r.err?': '+r.err:'')));
+    toast('Leave failed'+(r&&r.err?': '+r.err:''));
     if(seaOpen())startSeaLoop();
   }
 }
