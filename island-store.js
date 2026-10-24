@@ -80,6 +80,22 @@ function create({pool=null,log=console,mem=new Map()}={}){
       return{ok:false,err:'stale'}
     }catch(e){return fail(e,'xp')}}
 
+    // saveSea = persist discoveries from a finished voyage (server-only).
+  async function saveSea(uid,discoveries){
+    if(!validUid(uid))return{ok:false,err:'bad_id'};
+    try{
+      for(let attempt=0;attempt<3;attempt++){
+        let row=await read(uid);
+        if(!row){await insert(uid,I.createDefault());row=await read(uid)}
+        if(!row)return{ok:false,err:'unavailable'};
+        const p=pack(row);if(!p.ok)return p;
+        const r=I.applySeaDiscoveries(p.doc,discoveries);if(!r.ok)return r;
+        const rev=await write(uid,r.doc,p.rev);
+        if(rev){st.ok=true;return{ok:true,island:I.view(r.doc,rev),sea:r.doc.sea}}
+      }
+      return{ok:false,err:'stale'}
+    }catch(e){return fail(e,'sea')}}
+
   async function remove(uid){ // data deletion (account/guest delete). In PostgreSQL the row also vanishes with lb_players (ON DELETE CASCADE).
     if(!validUid(uid))return false;
     try{if(!pool)mem.delete(uid);else await pool.query('DELETE FROM lb_islands WHERE player_id=$1',[uid]);return true}
@@ -92,6 +108,6 @@ function create({pool=null,log=console,mem=new Map()}={}){
       else{st.ok=true;log.log('[island] lb_islands found.')}}
     catch(e){fail(e,'startup check')}}
   const status=()=>({store:pool?'postgres':'memory',persistent:!!pool,ok:pool?st.ok:true,error:st.lastError});
-  return{load,act,grantXp,remove,init,status};
+    return{load,act,grantXp,saveSea,remove,init,status};
 }
 module.exports={create};
