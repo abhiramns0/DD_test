@@ -192,7 +192,7 @@ io.on('connection',s=>{
     if(!r.ok)return reply(r);
     const saved=await island.saveSea(identUid,r.discoveries);
     seaSessions.delete(identUid);
-    reply({ok:true,island:saved.ok?saved.island:undefined,sea:r.discoveries})});
+    reply({ok:true,nearHome:!!r.nearHome,island:saved.ok?saved.island:undefined,sea:r.discoveries})});
   
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
     if(!lim('lb',6,1))return cb({rows:[],me:null,busy:1});
