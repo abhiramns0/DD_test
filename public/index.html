@@ -247,8 +247,27 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="dlg" id="cfm"><div><h2 id="cfmT"></h2><p id="cfmP"></p><button class="stay" id="cfmNo">CANCEL</button><button class="go" id="cfmYes"></button></div></div>
 <div class="dlg" id="leave"><div><h2>LEAVE GAME?</h2><p id="leavemsg"></p><button class="stay" id="stay">KEEP PLAYING</button><button class="go" id="leavego">LEAVE</button></div></div>
 <div class="ov" id="lbv" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">LEADERBOARD</h1><div class="seg modes" id="lbtabs"><button data-k="solo" class="on">SOLO</button><button data-k="mp">MULTIPLAYER</button></div><p class="hint" id="lbHint">Highest level reached</p><div id="lbList"></div><button class="sec" id="lbBack">BACK</button></div>
-<div class="ov" id="island" style="display:none"><h1 style="font-size:clamp(28px,7vw,44px)">MY ISLAND</h1><div id="islandProg" style="width:min(96vw,72vh);margin:0 auto 8px;display:none"><div style="display:flex;justify-content:space-between;align-items:baseline;font-weight:800;color:var(--ink);font-size:13px;margin-bottom:4px"><span id="islandLvl">LVL 1</span><span id="islandXpTxt">0 XP</span></div><div style="height:10px;border-radius:999px;background:rgba(39,64,90,.15);overflow:hidden"><div id="islandXpBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s ease"></div></div><p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;opacity:.75;text-align:center"></p></div><canvas id="islandCv" style="width:min(96vw,72vh);height:min(72vw,58vh);border-radius:22px;box-shadow:0 6px 0 rgba(39,64,90,.3);touch-action:none;cursor:grab"></canvas><p class="hint" id="islandMsg">Loading your island…</p><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px"><button class="sec" id="islandSail" style="display:none">⛵ SAIL OUT</button><button class="sec" id="islandBack">BACK</button></div></div>
-<div class="ov" id="sea" style="display:none;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(#1a6a8a,#0d3a50)"><div style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;display:flex;justify-content:space-between;padding:0 14px;pointer-events:none;z-index:2"><div id="seaHud" style="pointer-events:auto;background:rgba(255,255,255,.9);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25)">Open Sea</div><button class="sec" id="seaDock" style="pointer-events:auto;display:none;margin:0;font-size:14px;padding:7px 14px">🏠 DOCK</button></div><canvas id="seaCv" style="width:min(100vw,100vh);height:min(100vw,72vh);max-height:78vh;border-radius:18px;touch-action:none;cursor:grab"></canvas><p class="hint" id="seaMsg" style="color:#e8f6fc;margin-top:8px">Sailing…</p><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px"><button class="sec" id="seaAttack">⚔️ ATTACK</button><button class="sec" id="seaCollect">💎 COLLECT</button><button class="sec" id="seaBack">LEAVE SEA</button></div></div>
+
+ <div class="ov" id="island" style="display:none;padding:0;gap:0;justify-content:flex-start;background:linear-gradient(#7ec8e3,#58b9dc)">
+  <div id="islandHud" style="position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;display:flex;flex-direction:column;align-items:center;pointer-events:none">
+    <h1 style="font-size:clamp(22px,6vw,36px);margin:0;text-shadow:0 3px 0 var(--ink)">MY ISLAND</h1>
+    <div id="islandProg" style="width:min(92vw,420px);margin-top:8px;pointer-events:none;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-weight:800;color:#fff;font-size:13px;margin-bottom:4px;text-shadow:0 1px 2px rgba(39,64,90,.5)"><span id="islandLvl">LVL 1</span><span id="islandXpTxt">0 XP</span></div>
+      <div style="height:10px;border-radius:999px;background:rgba(39,64,90,.25);overflow:hidden;border:1px solid rgba(255,255,255,.45)"><div id="islandXpBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s ease"></div></div>
+      <p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;color:rgba(255,255,255,.9);text-align:center;text-shadow:0 1px 2px rgba(39,64,90,.45)"></p>
+    </div>
+  </div>
+  <canvas id="islandCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;box-shadow:none;touch-action:none;cursor:grab"></canvas>
+  <div style="position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;background:linear-gradient(transparent,rgba(39,64,90,.35))">
+    <p class="hint" id="islandMsg" style="color:#fff;text-shadow:0 1px 2px rgba(39,64,90,.6);margin:0">Loading your island…</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;pointer-events:auto">
+      <button class="sec" id="islandSail" style="margin:0">⛵ SAIL OUT</button>
+      <button class="sec" id="islandBack" style="margin:0">BACK</button>
+    </div>
+  </div>
+</div>
+ 
+ <div class="ov" id="sea" style="display:none;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(#1a6a8a,#0d3a50)"><div style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;display:flex;justify-content:space-between;padding:0 14px;pointer-events:none;z-index:2"><div id="seaHud" style="pointer-events:auto;background:rgba(255,255,255,.9);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25)">Open Sea</div><button class="sec" id="seaDock" style="pointer-events:auto;display:none;margin:0;font-size:14px;padding:7px 14px">🏠 DOCK</button></div><canvas id="seaCv" style="width:min(100vw,100vh);height:min(100vw,72vh);max-height:78vh;border-radius:18px;touch-action:none;cursor:grab"></canvas><p class="hint" id="seaMsg" style="color:#e8f6fc;margin-top:8px">Sailing…</p><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px"><button class="sec" id="seaAttack">⚔️ ATTACK</button><button class="sec" id="seaCollect">💎 COLLECT</button><button class="sec" id="seaBack">LEAVE SEA</button></div></div>
 <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
 <h3>GOAL</h3><p>The island is sinking! Collect 🪵 wood, 🍃 leaves and ⚡ energy, build your vehicle, board it and escape before the water wins.</p>
 <h3>CONTROLS</h3><p>Drag to move. Stand next to trees, logs, bushes and crystals to collect. Stand at your station to build, then climb aboard.</p>
@@ -264,7 +283,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="pop" id="instHelp"><div class="pcard"><h2>Install Drowning Dash</h2><p id="instSteps" class="steps"></p><button class="pbtn" id="instOk">GOT IT</button></div></div>
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
-<script src="/island-view.js?v=3"></script>
+<script src="/island-view.js?v=4"></script>
  <script src="/sea-view.js?v=1"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
@@ -1551,6 +1570,7 @@ $('nameGo').onclick=()=>{if(!$('agreeCb').checked)return;
   if(popNeedName){const v=cleanName($('nameIn').value);if(v.length<2)return;MY_NAME=v;LS.set('si_name',v);sendIdent();toast('Welcome, '+v+'!');track('name_set',{game_mode:'menu',play_type:'none'})}
   LS.set('si_terms',CONSENT_VERSION);LS.set('si_terms_at',new Date().toISOString());$('namePop').style.display='none'};
 // ---------- private island (foundation): the SERVER owns the island data; island-view.js only draws what it is sent ----------
+// ---------- private island (foundation): the SERVER owns the island data; island-view.js only draws what it is sent ----------
 let ISL=null,islSel='';
 const emitP=(ev,data,ms)=>new Promise(res=>{let done=false;const t=setTimeout(()=>{if(!done){done=true;res(null)}},ms||6000);try{socket.emit(ev,data,r=>{if(!done){done=true;clearTimeout(t);res(r)}})}catch(e){clearTimeout(t);res(null)}});
 const islSay=t=>{$('islandMsg').textContent=t};
@@ -1573,7 +1593,7 @@ async function openIsland(){
   show('island');islSel='';islSay('Loading your island…');
   for(let i=0;i<3;i++){
     const r=await emitP('island:load',{});
-    if(r&&r.ok){ISL=r.island;islPaint();islSay(IslandView.info(null));return}
+    if(r&&r.ok){ISL=r.island;islPaint();islSay('Your raft is ready at the Boat Jetty. Sail Out anytime.');return}
     if(r&&r.err==='not_ready'){await sendIdent();continue}
     if(r&&r.err==='busy'){await new Promise(x=>setTimeout(x,1200));continue}
     break}
@@ -1592,12 +1612,97 @@ socket.on('island:xp',d=>{
 });
 let islTap=null;
 $('islandCv').onpointerdown=e=>{islTap={x:e.clientX,y:e.clientY,t:Date.now()}};
-$('islandCv').onclick=e=>{if(!ISL||!window.IslandView)return;
-  if(islTap&&(Math.hypot(e.clientX-islTap.x,e.clientY-islTap.y)>8||Date.now()-islTap.t>400)){islTap=null;return} // was a pan, not a tap
-  islTap=null;const s=IslandView.hit($('islandCv'),ISL,e.clientX,e.clientY);islSel=s?s.id:'';islSay(IslandView.info(s));islPaint()};
- socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)}); // reconnect while looking at the island: reload it from the server
-window.addEventListener('resize',()=>{if(islOpen())islPaint()});
-/* first-run flow (sign-in choice, then name) is started by startFlow() in the accounts block */
+socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)});
+window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen==='function'&&seaOpen())seaPaint()});
+
+// ---- Open Sea (single-player exploration foundation) ----
+let SEA=null,seaLoop=0,seaIntent={mx:0,my:0};
+const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
+const seaPaint=()=>{if(window.SeaView&&SEA)SeaView.draw($('seaCv'),SEA)};
+const seaSay=t=>{const el=$('seaMsg');if(el)el.textContent=t};
+function seaUpdateHud(){
+  if(!SEA)return;
+  const d=SEA.discoveries||{};
+  const hud=$('seaHud');if(hud)hud.textContent='⛵ Sea · 💎 '+(d.treasures||0)+' · 🏝️ '+(d.islets||0)+' islets';
+  const dock=$('seaDock');if(dock)dock.style.display=SEA.nearHome?'':'none';
+  if(SEA.nearHome)seaSay('Near home — Dock to return to your island');
+}
+function seaHandleEvents(evs){
+  (evs||[]).forEach(e=>{
+    if(e.t==='treasure')toast('💎 Treasure +'+e.value);
+    else if(e.t==='explore')toast('🏝️ Discovered '+e.name);
+    else if(e.t==='kill')toast(e.loot?'⚔️ Wreck ready to loot':'⚔️ Target sunk');
+    else if(e.t==='loot')toast('✨ Loot +'+e.gained);
+  });
+}
+async function seaStep(){
+  if(!seaOpen()||!SEA)return;
+  const r=await emitP('sea:tick',{},1500);
+  if(r&&r.ok&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud()}
+}
+function startSeaLoop(){stopSeaLoop();seaLoop=setInterval(seaStep,1000/12)}
+function stopSeaLoop(){if(seaLoop){clearInterval(seaLoop);seaLoop=0}}
+
+async function enterSea(){
+  if(!window.SeaView){toast('Open Sea is not available right now.');return}
+  if(!socket.connected){toast('Not connected — wait for the server.');return}
+  islSay('Launching from the jetty…');
+  for(let i=0;i<2;i++){
+    const r=await emitP('sea:enter',{},8000);
+    if(r&&r.ok){
+      SEA=r.sea;show('sea');seaPaint();seaUpdateHud();seaSay('Sail beyond the horizon. Dock at 🏠 to return.');
+      startSeaLoop();socket.emit('sea:intent',seaIntent);return}
+    if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
+    if(r&&r.err==='busy'){toast('Too many requests — try again.');return}
+    toast('Could not sail out'+(r&&r.err?': '+r.err:'. Check connection.'));return}
+  toast('Could not sail out — identity not ready. Try again.');
+}
+
+async function dockSea(){
+  const r=await emitP('sea:return',{},6000);
+  stopSeaLoop();
+  if(r&&r.ok){
+    if(r.island)ISL=r.island;
+    toast('🏠 Docked at your island');
+    show('island');islPaint();islSay('Welcome back.');
+  }else{
+    toast(r&&r.err==='too_far'?'Sail closer to home to dock.':('Dock failed'+(r&&r.err?': '+r.err:'')));
+    if(seaOpen())startSeaLoop();
+  }
+}
+
+$('islandSail').onclick=e=>{e.stopPropagation();enterSea()};
+$('seaDock').onclick=e=>{e.stopPropagation();dockSea()};
+$('seaBack').onclick=e=>{e.stopPropagation();dockSea()};
+$('seaAttack').onclick=async e=>{e.stopPropagation();const r=await emitP('sea:act',{op:'attack'},2000);if(r&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud()}};
+$('seaCollect').onclick=async e=>{e.stopPropagation();
+  let r=await emitP('sea:act',{op:'collect'},2000);
+  if(r&&!r.ok&&r.err==='nothing')r=await emitP('sea:act',{op:'loot'},2000);
+  if(r&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud();
+    if(r.ok&&r.value)toast('💎 +'+r.value);else if(r.ok&&r.gained)toast('✨ Loot +'+r.gained)}};
+
+(function(){
+  const cv=$('seaCv');if(!cv)return;let drag=null;
+  cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};try{cv.setPointerCapture(e.pointerId)}catch(err){}});
+  cv.addEventListener('pointermove',e=>{
+    if(!drag)return;
+    const dx=e.clientX-drag.x,dy=e.clientY-drag.y,l=Math.hypot(dx,dy)||1;
+    if(l<12){seaIntent={mx:0,my:0}}else seaIntent={mx:dx/l,my:dy/l};
+    socket.emit('sea:intent',seaIntent);
+  });
+  cv.addEventListener('pointerup',()=>{drag=null;seaIntent={mx:0,my:0};socket.emit('sea:intent',seaIntent)});
+  cv.addEventListener('pointercancel',()=>{drag=null;seaIntent={mx:0,my:0};socket.emit('sea:intent',seaIntent)});
+  if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{seaIntent={mx,my};socket.emit('sea:intent',seaIntent)});
+})();
+
+$('islandCv').onclick=e=>{
+  if(!ISL||!window.IslandView)return;
+  if(islTap&&(Math.hypot(e.clientX-islTap.x,e.clientY-islTap.y)>8||Date.now()-islTap.t>400)){islTap=null;return}
+  islTap=null;const s=IslandView.hit($('islandCv'),ISL,e.clientX,e.clientY);islSel=s?s.id:'';islSay(IslandView.info(s));islPaint();
+  if(s&&s.type==='jetty')islSay('Boat Jetty — your raft is ready. Tap Sail Out to explore.');
+};
+
+ 
 // ---------- leaderboard ----------
 let lbKind='solo';
 let lbReq=0;
