@@ -38,6 +38,11 @@ function create({pool=null,log=console,mem=new Map()}={}){
       if(!row){created=await insert(uid,I.createDefault());row=await read(uid)}
       if(!row)return{ok:false,err:'unavailable'};
       const p=pack(row);if(!p.ok)return p;st.ok=true;st.lastError='';
+      // If normalize unlocked extra zones (XP catch-up) or repaired structures, persist the repaired doc.
+      if(JSON.stringify(p.doc)!==JSON.stringify(row.data)){
+        const rev=await write(uid,p.doc,p.rev);
+        if(rev)return{ok:true,created,persistent:!!pool,island:I.view(p.doc,rev)}
+      }
       return{ok:true,created,persistent:!!pool,island:I.view(p.doc,p.rev)}
     }catch(e){return fail(e,'load')}}
 
@@ -54,6 +59,27 @@ function create({pool=null,log=console,mem=new Map()}={}){
       st.ok=true;return{ok:true,island:I.view(r.doc,rev)}
     }catch(e){return fail(e,'save')}}
 
+  // grantXp = server-only XP award. amount/key come from the game server, never from a client payload.
+  // Retries once on a lost CAS race so concurrent stage-complete events still land.
+  async function grantXp(uid,amount,key){
+    if(!validUid(uid))return{ok:false,err:'bad_id'};
+    try{
+      for(let attempt=0;attempt<3;attempt++){
+        let row=await read(uid);
+        if(!row){await insert(uid,I.createDefault());row=await read(uid)}
+        if(!row)return{ok:false,err:'unavailable'};
+        const p=pack(row);if(!p.ok)return p;
+        const r=I.awardXp(p.doc,amount,key);
+        if(!r.ok){
+          // duplicate is not a failure for the caller — the event was already counted
+          if(r.err==='duplicate')return{ok:true,duplicate:true,island:I.view(p.doc,p.rev),gained:0,unlocked:[],levelUp:false};
+          return{ok:false,err:r.err,island:I.view(p.doc,p.rev)}}
+        const rev=await write(uid,r.doc,p.rev);
+        if(rev){st.ok=true;return{ok:true,island:I.view(r.doc,rev),gained:r.gained,unlocked:r.unlocked,levelUp:r.levelUp}}
+      }
+      return{ok:false,err:'stale'}
+    }catch(e){return fail(e,'xp')}}
+
   async function remove(uid){ // data deletion (account/guest delete). In PostgreSQL the row also vanishes with lb_players (ON DELETE CASCADE).
     if(!validUid(uid))return false;
     try{if(!pool)mem.delete(uid);else await pool.query('DELETE FROM lb_islands WHERE player_id=$1',[uid]);return true}
@@ -66,6 +92,6 @@ function create({pool=null,log=console,mem=new Map()}={}){
       else{st.ok=true;log.log('[island] lb_islands found.')}}
     catch(e){fail(e,'startup check')}}
   const status=()=>({store:pool?'postgres':'memory',persistent:!!pool,ok:pool?st.ok:true,error:st.lastError});
-  return{load,act,remove,init,status};
+  return{load,act,grantXp,remove,init,status};
 }
 module.exports={create};
