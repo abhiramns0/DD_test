@@ -128,6 +128,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .pcard h2{margin:0;font-size:clamp(22px,6vw,28px);line-height:1.15}
 .pcard input{width:100%;box-sizing:border-box;font:inherit;font-size:22px;font-weight:800;text-align:center;padding:10px;border-radius:16px;border:2px solid #cfe3ee;color:var(--ink);letter-spacing:1px}
 .pbtn{background:var(--accent);color:#fff;border:0;border-radius:30px;padding:10px 30px;font:inherit;font-weight:800;font-size:20px;box-shadow:0 4px 0 #c85a32;cursor:pointer}.pbtn:disabled{opacity:.45}.pcard .pbtn{width:100%;box-sizing:border-box}.pbtn.alt{background:#2f9bc4;box-shadow:0 4px 0 #1f7396}.pbtn.ghost{background:#e6eef3;color:var(--ink);box-shadow:0 4px 0 #b8cad6}#instHelp,#invSheet{z-index:26}#instHelp{z-index:28}.pcard p.steps{margin:0;font-size:17px;line-height:1.45;text-align:left}
+.pcard .agree{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:14px;line-height:1.35;font-weight:600;cursor:pointer}.pcard .agree input{width:24px;height:24px;flex:none;padding:0;margin:0;border-radius:6px;accent-color:var(--accent);letter-spacing:0}.pcard .agree a{color:#2f9bc4;font-weight:800;text-decoration:underline}
 #revPlay{position:relative;width:116px;height:116px;border-radius:50%;border:0;background:var(--accent);color:#fff;font:inherit;display:grid;place-items:center;cursor:pointer;box-shadow:0 5px 0 #c85a32;opacity:.55;padding:0;margin:8px 0}
 #revPlay span{font-size:46px;line-height:1;margin-left:6px}#revPlay:not(:disabled){opacity:1;animation:p .6s infinite alternate}
 #revPlay svg{position:absolute;left:-14px;top:-14px;width:calc(100% + 28px);height:calc(100% + 28px);transform:rotate(-90deg);pointer-events:none}
@@ -248,7 +249,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <h3>TEAMWORK</h3><p>🐊 Crocodiles are deadly. A teammate who stands next to you for 3 s (within 10 s) revives you.</p>
 </div><button class="sec" id="helpBack">BACK</button></div>
 <div class="pop" id="revive"><div class="pcard"><h2>Do you want to revive?</h2><button id="revPlay" disabled aria-label="Play to revive"><svg viewBox="0 0 140 140" aria-hidden="true"><circle class="rt" cx="70" cy="70" r="64"/><circle id="revRing" class="rp" cx="70" cy="70" r="64"/></svg><span>▶</span></button></div><button class="pgive" id="revGive">give up</button></div>
-<div class="pop" id="namePop"><div class="pcard"><h2>Welcome! Pick a player name</h2><input id="nameIn" maxlength="14" placeholder="Your name" autocomplete="off"><button class="pbtn" id="nameGo" disabled>LET’S GO</button></div></div>
+<div class="pop" id="namePop"><div class="pcard"><h2 id="nameT">Welcome! Pick a player name</h2><input id="nameIn" maxlength="14" placeholder="Your name" autocomplete="off"><label class="agree" for="agreeCb"><input type="checkbox" id="agreeCb"><span>I agree to the <a href="https://www.drowningdash.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and acknowledge that I have read the <a href="https://www.drowningdash.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span></label><button class="pbtn" id="nameGo" disabled>CONTINUE</button></div></div>
 <div class="pop" id="instHelp"><div class="pcard"><h2>Install Drowning Dash</h2><p id="instSteps" class="steps"></p><button class="pbtn" id="instOk">GOT IT</button></div></div>
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
@@ -1340,13 +1341,13 @@ const URL_ERR=URLQ.get('error_description')||URLH.get('error_description')||'',U
 let SESSION=null,authReady=false,authReturn='menu',identRetry=0,linking=false,mailAddr='',mailBusy=false,mailPoll=0,mailCool=0;
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
 // back to a clean, fresh-install guest on this device (used by log out and delete account). Sound settings are kept.
-const wipeLocal=()=>['si_uid','si_name','si_best','si_best_mp','si_done','si_skin','si_theme','si_linked','si_auth_seen'].forEach(LS.del);
+const wipeLocal=()=>['si_uid','si_name','si_best','si_best_mp','si_done','si_skin','si_theme','si_linked','si_auth_seen','si_terms','si_terms_at'].forEach(LS.del);
 function applyProfile(p){if(!p)return;if(p.done)saveDone(p.done);(p.skins||[]).forEach(x=>{if(!OWNED_SKINS.includes(x))OWNED_SKINS.push(x)});(p.scenery||[]).forEach(x=>{if(!OWNED_SCENERY.includes(x))OWNED_SCENERY.push(x)})}
 function sendIdent(){return new Promise(res=>{if(!authReady){res(null);return}
   try{socket.emit('ident',{uid:UID,name:MY_NAME,done:getDone(),token:SESSION?SESSION.access_token:undefined},r=>{onIdent(r);res(r)})}catch(e){res(null);return}setTimeout(()=>res(null),3500)})}
 function onIdent(r){if(!r)return;
   if(r.ok){identRetry=0;applyProfile(r.profile);
-    if(!MY_NAME&&r.name){MY_NAME=r.name;LS.set('si_name',r.name);$('namePop').style.display='none';sendIdent()} // new phone: take the name saved on the account
+    if(!MY_NAME&&r.name){MY_NAME=r.name;LS.set('si_name',r.name);if(consentOk())$('namePop').style.display='none';else openNamePop();sendIdent()} // new phone: take the name saved on the account
     if(SESSION&&r.auth)linkGuest();return}
   if(r.err==='bad_token'&&SESSION&&sb){ // expired session: refresh once, otherwise fall back to guest
     sb.auth.refreshSession().then(x=>{if(x&&x.data&&x.data.session){SESSION=x.data.session;sendIdent()}else doLogout(true)}).catch(()=>{});return}
@@ -1370,7 +1371,7 @@ async function oauth(provider){if(!sb)return;setMsg('authMsg','Opening '+(provid
   catch(e){setMsg('authMsg','Couldn’t start sign-in. Please try again.')}}
 if(!SHOW_APPLE)$('ssoA').style.display='none';if(!SHOW_EMAIL)$('ssoM').style.display='none';
 $('ssoG').onclick=()=>oauth('google');$('ssoA').onclick=()=>oauth('apple');
-$('guestGo').onclick=()=>{LS.set('si_auth_seen','1');show('menu');if(!MY_NAME)openNamePop()};
+$('guestGo').onclick=()=>{LS.set('si_auth_seen','1');show('menu');if(!MY_NAME||!consentOk())openNamePop()};
 $('authBack').onclick=()=>show(authReturn);
 $('signInBtn').onclick=e=>{e.stopPropagation();initAudio();openAuth('login')};
 // ---- email: a code AND a link are sent. Typing the code works everywhere (iOS/Android offer it above the keyboard);
@@ -1421,7 +1422,7 @@ async function doDelete(){if(!socket.connected){toast('You need to be online to 
 function startFlow(){
   const seen=LS.get('si_auth_seen')||MY_NAME||getBest('solo')||getBest('mp')||getDone(); // players from before accounts existed skip the welcome screen and just see the "Sign in" pill
   if(AUTH_ON&&!SESSION&&!seen){openAuth('welcome');return}
-  if(!MY_NAME){openNamePop();const m=SESSION&&SESSION.user&&SESSION.user.user_metadata,sug=m?cleanName(m.full_name||m.name||''):'';if(sug.length>=2){$('nameIn').value=sug;$('nameIn').oninput()}}}
+  if(!MY_NAME||!consentOk()){openNamePop();const m=SESSION&&SESSION.user&&SESSION.user.user_metadata,sug=popNeedName&&m?cleanName(m.full_name||m.name||''):'';if(sug.length>=2){$('nameIn').value=sug;$('nameIn').oninput()}}}
 async function authInit(){
   if(sb){
     try{const r=await sb.auth.getSession();SESSION=(r&&r.data&&r.data.session)||null}catch(e){}
@@ -1525,9 +1526,17 @@ function reviveGiveUp(force){if(reviveLive&&!force)return;const d=reviveCtx;revi
 $('revGive').onclick=()=>reviveGiveUp(false);$('revPlay').onclick=reviveGo;
 socket.on('rev',d=>{reviveCtx=null;reviveClose();startAt=d.startAt;offset=d.serverNow-Date.now();col=null;banner('🌊 LOW TIDE!<small>15 more seconds — finish the build and escape</small>',3000);snd(520,.5,'triangle',.12,2)});
 // ---------- name popup (first visit) ----------
-function openNamePop(){$('nameIn').value='';$('nameGo').disabled=true;$('namePop').style.display='flex'}
-$('nameIn').oninput=()=>{const v=cleanName($('nameIn').value);$('nameGo').disabled=v.length<2};
-$('nameGo').onclick=()=>{const v=cleanName($('nameIn').value);if(v.length<2)return;MY_NAME=v;try{localStorage.setItem('si_name',v)}catch(e){}$('namePop').style.display='none';sendIdent();toast('Welcome, '+v+'!');track('name_set',{game_mode:'menu',play_type:'none'})};
+// Consent: bump CONSENT_VERSION whenever the Terms / Privacy Policy change materially -> every player is asked again once.
+const CONSENT_VERSION='2026-10-24';
+const consentOk=()=>LS.get('si_terms')===CONSENT_VERSION;
+let popNeedName=true;
+function syncNameGo(){$('nameGo').disabled=!((!popNeedName||cleanName($('nameIn').value).length>=2)&&$('agreeCb').checked)}
+function openNamePop(){popNeedName=!MY_NAME;$('nameIn').value=MY_NAME||'';$('nameIn').style.display=popNeedName?'':'none';
+  $('nameT').textContent=popNeedName?'Welcome! Pick a player name':'Quick check before you play';$('agreeCb').checked=false;syncNameGo();$('namePop').style.display='flex'}
+$('nameIn').oninput=syncNameGo;$('agreeCb').onchange=syncNameGo;
+$('nameGo').onclick=()=>{if(!$('agreeCb').checked)return;
+  if(popNeedName){const v=cleanName($('nameIn').value);if(v.length<2)return;MY_NAME=v;LS.set('si_name',v);sendIdent();toast('Welcome, '+v+'!');track('name_set',{game_mode:'menu',play_type:'none'})}
+  LS.set('si_terms',CONSENT_VERSION);LS.set('si_terms_at',new Date().toISOString());$('namePop').style.display='none'};
 /* first-run flow (sign-in choice, then name) is started by startFlow() in the accounts block */
 // ---------- leaderboard ----------
 let lbKind='solo';
