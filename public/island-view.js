@@ -15,7 +15,7 @@
   const ICON={palm:'🌴',rock:'🪨',flag:'🚩',crate:'📦'};
   const INFO={
     workshop:'Workshop — crafting is coming soon.',
-    jetty:'Boat Jetty — sailing is coming soon.'
+    jetty:'Boat Jetty — tap Sail Out to enter the Open Sea.'
   };
 
   // Persistent pan state (tile-space camera centre)
