@@ -247,7 +247,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="dlg" id="cfm"><div><h2 id="cfmT"></h2><p id="cfmP"></p><button class="stay" id="cfmNo">CANCEL</button><button class="go" id="cfmYes"></button></div></div>
 <div class="dlg" id="leave"><div><h2>LEAVE GAME?</h2><p id="leavemsg"></p><button class="stay" id="stay">KEEP PLAYING</button><button class="go" id="leavego">LEAVE</button></div></div>
 <div class="ov" id="lbv" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">LEADERBOARD</h1><div class="seg modes" id="lbtabs"><button data-k="solo" class="on">SOLO</button><button data-k="mp">MULTIPLAYER</button></div><p class="hint" id="lbHint">Highest level reached</p><div id="lbList"></div><button class="sec" id="lbBack">BACK</button></div>
-<div class="ov" id="island" style="display:none"><h1 style="font-size:clamp(28px,7vw,44px)">MY ISLAND</h1><canvas id="islandCv" style="width:min(96vw,72vh);height:min(72vw,58vh);border-radius:22px;box-shadow:0 6px 0 rgba(39,64,90,.3);touch-action:none;cursor:grab"></canvas><p class="hint" id="islandMsg">Loading your island…</p><button class="sec" id="islandBack">BACK</button></div>
+<div class="ov" id="island" style="display:none"><h1 style="font-size:clamp(28px,7vw,44px)">MY ISLAND</h1><div id="islandProg" style="width:min(96vw,72vh);margin:0 auto 8px;display:none"><div style="display:flex;justify-content:space-between;align-items:baseline;font-weight:800;color:var(--ink);font-size:13px;margin-bottom:4px"><span id="islandLvl">LVL 1</span><span id="islandXpTxt">0 XP</span></div><div style="height:10px;border-radius:999px;background:rgba(39,64,90,.15);overflow:hidden"><div id="islandXpBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s ease"></div></div><p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;opacity:.75;text-align:center"></p></div><canvas id="islandCv" style="width:min(96vw,72vh);height:min(72vw,58vh);border-radius:22px;box-shadow:0 6px 0 rgba(39,64,90,.3);touch-action:none;cursor:grab"></canvas><p class="hint" id="islandMsg">Loading your island…</p><button class="sec" id="islandBack">BACK</button></div>
 <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
 <h3>GOAL</h3><p>The island is sinking! Collect 🪵 wood, 🍃 leaves and ⚡ energy, build your vehicle, board it and escape before the water wins.</p>
 <h3>CONTROLS</h3><p>Drag to move. Stand next to trees, logs, bushes and crystals to collect. Stand at your station to build, then climb aboard.</p>
@@ -263,7 +263,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="pop" id="instHelp"><div class="pcard"><h2>Install Drowning Dash</h2><p id="instSteps" class="steps"></p><button class="pbtn" id="instOk">GOT IT</button></div></div>
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
-<script src="/island-view.js?v=2"></script>
+<script src="/island-view.js?v=3"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1552,20 +1552,42 @@ $('nameGo').onclick=()=>{if(!$('agreeCb').checked)return;
 let ISL=null,islSel='';
 const emitP=(ev,data,ms)=>new Promise(res=>{let done=false;const t=setTimeout(()=>{if(!done){done=true;res(null)}},ms||6000);try{socket.emit(ev,data,r=>{if(!done){done=true;clearTimeout(t);res(r)}})}catch(e){clearTimeout(t);res(null)}});
 const islSay=t=>{$('islandMsg').textContent=t};
-const islPaint=()=>{if(window.IslandView&&ISL)IslandView.draw($('islandCv'),ISL,{selectedId:islSel})};
+const islPaint=()=>{if(window.IslandView&&ISL)IslandView.draw($('islandCv'),ISL,{selectedId:islSel});islRenderProg()};
 const islOpen=()=>$('island').style.display==='flex';
+function islRenderProg(){
+  const box=$('islandProg');if(!box)return;
+  if(!ISL||!ISL.progress){box.style.display='none';return}
+  box.style.display='block';
+  const p=ISL.progress;$('islandLvl').textContent='LVL '+p.level;
+  $('islandXpTxt').textContent=p.need==null?(p.totalXp+' XP'):(p.xp+' / '+p.need+' XP');
+  $('islandXpBar').style.width=p.need==null?'100%':(Math.min(100,Math.round(100*p.xp/Math.max(1,p.need)))+'%');
+  const locked=(ISL.nextZones||[])[0];
+  const clouds=(ISL.zones||[]).filter(z=>!z.unlocked).length;
+  $('islandNext').textContent=locked
+    ?('Next land: '+locked.id+' at '+locked.xp+' XP · '+clouds+' region'+(clouds===1?'':'s')+' still in cloud')
+    :(clouds?clouds+' region'+(clouds===1?'':'s')+' still in cloud':'Island fully explored')}
 async function openIsland(){
   if(!window.IslandView){toast('The island isn’t available right now.');return}
   show('island');islSel='';islSay('Loading your island…');
   for(let i=0;i<3;i++){
     const r=await emitP('island:load',{});
     if(r&&r.ok){ISL=r.island;islPaint();islSay(IslandView.info(null));return}
-    if(r&&r.err==='not_ready'){await sendIdent();continue}            // identity not confirmed yet (just connected): confirm it, then retry
+    if(r&&r.err==='not_ready'){await sendIdent();continue}
     if(r&&r.err==='busy'){await new Promise(x=>setTimeout(x,1200));continue}
     break}
   islSay(ISL?'Offline — showing your last view. Reconnect to refresh.':'Couldn’t load your island. Check your connection and try again.');islPaint()}
 $('islandBtn').onclick=e=>{e.stopPropagation();openIsland()};
 $('islandBack').onclick=()=>show('menu');
+socket.on('island:xp',d=>{
+  if(d&&d.island)ISL=d.island;
+  if(islOpen())islPaint();
+  if(d&&d.gained){
+    let msg='+'+d.gained+' XP';
+    if(d.levelUp)msg+=' · Level up!';
+    if(d.unlocked&&d.unlocked.length)msg+=' · New land: '+d.unlocked.join(', ');
+    toast(msg);
+  }
+});
 let islTap=null;
 $('islandCv').onpointerdown=e=>{islTap={x:e.clientX,y:e.clientY,t:Date.now()}};
 $('islandCv').onclick=e=>{if(!ISL||!window.IslandView)return;
