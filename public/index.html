@@ -191,6 +191,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <button class="acct" id="signInBtn">👤 GUEST · SIGN IN</button>
 <div class="pbg" style="margin-top:14px"><button id="solo">SOLO</button><p class="best" id="best"></p></div>
 <div class="pbg"><button id="multi">MULTIPLAYER</button><p class="best" id="bestmp"></p></div>
+<button class="inv" id="islandBtn">🏝️ MY ISLAND</button>
 <button class="inv" id="invMenu">📨 INVITE FRIENDS</button></div>
 <div class="ov" id="mp" style="display:none"><h1 style="font-size:clamp(32px,9vw,54px)">MULTIPLAYER</h1>
 <button id="qpBtn">QUICK PLAY</button><button id="hostBtn">HOST A ROOM</button>
@@ -238,6 +239,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="dlg" id="cfm"><div><h2 id="cfmT"></h2><p id="cfmP"></p><button class="stay" id="cfmNo">CANCEL</button><button class="go" id="cfmYes"></button></div></div>
 <div class="dlg" id="leave"><div><h2>LEAVE GAME?</h2><p id="leavemsg"></p><button class="stay" id="stay">KEEP PLAYING</button><button class="go" id="leavego">LEAVE</button></div></div>
 <div class="ov" id="lbv" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">LEADERBOARD</h1><div class="seg modes" id="lbtabs"><button data-k="solo" class="on">SOLO</button><button data-k="mp">MULTIPLAYER</button></div><p class="hint" id="lbHint">Highest level reached</p><div id="lbList"></div><button class="sec" id="lbBack">BACK</button></div>
+<div class="ov" id="island" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">MY ISLAND</h1><canvas id="islandCv" style="width:min(92vw,52vh);height:min(92vw,52vh);border-radius:22px;box-shadow:0 6px 0 rgba(39,64,90,.3);touch-action:manipulation"></canvas><p class="hint" id="islandMsg">Loading your island…</p><button class="sec" id="islandBack">BACK</button></div>
 <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
 <h3>GOAL</h3><p>The island is sinking! Collect 🪵 wood, 🍃 leaves and ⚡ energy, build your vehicle, board it and escape before the water wins.</p>
 <h3>CONTROLS</h3><p>Drag to move. Stand next to trees, logs, bushes and crystals to collect. Stand at your station to build, then climb aboard.</p>
@@ -253,6 +255,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="pop" id="instHelp"><div class="pcard"><h2>Install Drowning Dash</h2><p id="instSteps" class="steps"></p><button class="pbtn" id="instOk">GOT IT</button></div></div>
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
+<script src="/island-view.js?v=1"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1537,6 +1540,27 @@ $('nameIn').oninput=syncNameGo;$('agreeCb').onchange=syncNameGo;
 $('nameGo').onclick=()=>{if(!$('agreeCb').checked)return;
   if(popNeedName){const v=cleanName($('nameIn').value);if(v.length<2)return;MY_NAME=v;LS.set('si_name',v);sendIdent();toast('Welcome, '+v+'!');track('name_set',{game_mode:'menu',play_type:'none'})}
   LS.set('si_terms',CONSENT_VERSION);LS.set('si_terms_at',new Date().toISOString());$('namePop').style.display='none'};
+// ---------- private island (foundation): the SERVER owns the island data; island-view.js only draws what it is sent ----------
+let ISL=null,islSel='';
+const emitP=(ev,data,ms)=>new Promise(res=>{let done=false;const t=setTimeout(()=>{if(!done){done=true;res(null)}},ms||6000);try{socket.emit(ev,data,r=>{if(!done){done=true;clearTimeout(t);res(r)}})}catch(e){clearTimeout(t);res(null)}});
+const islSay=t=>{$('islandMsg').textContent=t};
+const islPaint=()=>{if(window.IslandView&&ISL)IslandView.draw($('islandCv'),ISL,{selectedId:islSel})};
+const islOpen=()=>$('island').style.display==='flex';
+async function openIsland(){
+  if(!window.IslandView){toast('The island isn’t available right now.');return}
+  show('island');islSel='';islSay('Loading your island…');
+  for(let i=0;i<3;i++){
+    const r=await emitP('island:load',{});
+    if(r&&r.ok){ISL=r.island;islPaint();islSay(IslandView.info(null));return}
+    if(r&&r.err==='not_ready'){await sendIdent();continue}            // identity not confirmed yet (just connected): confirm it, then retry
+    if(r&&r.err==='busy'){await new Promise(x=>setTimeout(x,1200));continue}
+    break}
+  islSay(ISL?'Offline — showing your last view. Reconnect to refresh.':'Couldn’t load your island. Check your connection and try again.');islPaint()}
+$('islandBtn').onclick=e=>{e.stopPropagation();openIsland()};
+$('islandBack').onclick=()=>show('menu');
+$('islandCv').onclick=e=>{if(!ISL||!window.IslandView)return;const s=IslandView.hit($('islandCv'),ISL,e.clientX,e.clientY);islSel=s?s.id:'';islSay(IslandView.info(s));islPaint()};
+socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)}); // reconnect while looking at the island: reload it from the server
+window.addEventListener('resize',()=>{if(islOpen())islPaint()});
 /* first-run flow (sign-in choice, then name) is started by startFlow() in the accounts block */
 // ---------- leaderboard ----------
 let lbKind='solo';
