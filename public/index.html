@@ -1665,7 +1665,9 @@ async function enterSea(){
   for(let i=0;i<2;i++){
     const r=await emitP('sea:enter',{},8000);
     if(r&&r.ok){
-      SEA=r.sea;show('sea');seaPaint();seaUpdateHud();seaSay('Sail beyond the horizon. Dock at 🏠 to return.');
+      SEA=r.sea;show('sea');
+      try{$('lside').style.display='none';$('setBtn').style.display='none';$('side').style.display='none'}catch(e){}
+      seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
       startSeaLoop();socket.emit('sea:intent',seaIntent);return}
     if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
     if(r&&r.err==='busy'){toast('Too many requests — try again.');return}
@@ -1673,13 +1675,6 @@ async function enterSea(){
   toast('Could not sail out — identity not ready. Try again.');
 }
 
-// inside enterSea when r.ok:
-SEA=r.sea;show('sea');
-try{$('lside').style.display='none';$('setBtn').style.display='none';$('side').style.display='none'}catch(e){}
-seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
-startSeaLoop();socket.emit('sea:intent',seaIntent);return
-
-// dockSea:
 async function dockSea(){
   const r=await emitP('sea:return',{},6000);
   stopSeaLoop();
