@@ -1,5 +1,7 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
+const Sea=require('./sea'); // open-sea rules (pure)
+const seaSessions=new Map(); // uid -> {session, lastTick, sockId}
 const {Server}=require('socket.io');
 const {Room,CFG,MODES}=require('./game');
 const PROD=process.env.NODE_ENV==='production',SOLO=process.env.ALLOW_SOLO==='1'||!PROD,DBG=process.env.ALLOW_DEBUG==='1'||!PROD;
@@ -149,6 +151,49 @@ io.on('connection',s=>{
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!d||typeof d!=='object'||!lim('isl',10,1))return reply({ok:false,err:'busy'});
     reply(await island.act(identUid,d.action,d.rev))});
+
+  s.on('sea:enter',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!lim('isl',6,1))return reply({ok:false,err:'busy'});
+    try{
+      const discPack=await island.saveSea(identUid,{});
+      const disc=discPack.ok&&discPack.sea?discPack.sea:{islets:[],treasures:[],voyages:0,treasureCount:0};
+      const voyage=(disc.voyages|0)+1;
+      const session=Sea.createSession(identUid,voyage,disc);
+      seaSessions.set(identUid,{session,lastTick:Date.now(),sockId:s.id});
+      reply({ok:true,sea:Sea.view(session)})
+    }catch(e){console.error('[sea] enter',e.message);reply({ok:false,err:'unavailable'})}});
+  s.on('sea:intent',(d)=>{
+    if(!identUid)return;const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return;
+    const mx=d&&typeof d.mx==='number'?Math.max(-1,Math.min(1,d.mx)):0;
+    const my=d&&typeof d.my==='number'?Math.max(-1,Math.min(1,d.my)):0;
+    Sea.setIntent(slot.session,mx,my)});
+  s.on('sea:tick',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
+    const now=Date.now();const dt=Math.min(0.1,(now-slot.lastTick)/1000);slot.lastTick=now;
+    Sea.tick(slot.session,dt,now);
+    reply({ok:true,sea:Sea.view(slot.session)})});
+  s.on('sea:act',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!d||typeof d!=='object'||!lim('isl',20,5))return reply({ok:false,err:'busy'});
+    const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
+    const now=Date.now();
+    let r;
+    if(d.op==='attack')r=Sea.attack(slot.session,now);
+    else if(d.op==='loot')r=Sea.loot(slot.session,now);
+    else if(d.op==='collect')r=Sea.collectTreasure(slot.session,now);
+    else return reply({ok:false,err:'bad_action'});
+    reply(Object.assign({ok:!!r.ok},r,{sea:Sea.view(slot.session)}))});
+  s.on('sea:return',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    const slot=seaSessions.get(identUid);if(!slot)return reply({ok:false,err:'no_session'});
+    const r=Sea.returnHome(slot.session);
+    if(!r.ok)return reply(r);
+    const saved=await island.saveSea(identUid,r.discoveries);
+    seaSessions.delete(identUid);
+    reply({ok:true,island:saved.ok?saved.island:undefined,sea:r.discoveries})});
+  
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
     if(!lim('lb',6,1))return cb({rows:[],me:null,busy:1});
     board.top(d&&d.kind==='mp'?'mp':'solo',identUid||(d&&board.validUid(d.uid)?d.uid:'')).then(cb).catch(()=>cb({rows:[],me:null,error:'unavailable'}))});
@@ -163,6 +208,7 @@ io.on('connection',s=>{
   s.on('tolobby',()=>{if(room&&room.host===pid&&room.state==='GAME_OVER')room.toLobby()});
   s.on('dbg',d=>{if(DBG&&room)room.dbg(pid,d,Date.now())});
   s.on('disconnect',()=>{if(!room)return;const rm=room;if(rm.socks.get(pid)!==s)return; // a newer socket already took over this slot
+                             if(identUid){const slot=seaSessions.get(identUid);if(slot&&slot.sockId===s.id)seaSessions.delete(identUid)}
     rm.socks.delete(pid);
     if(rm.state==='LOBBY')rm.removePlayer(pid);else rm.setOffline(pid,Date.now()); // grace period in game
     if(!rm.humans())rooms.delete(rm.code)});
