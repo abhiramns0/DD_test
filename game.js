@@ -384,7 +384,7 @@ class Room{
   constructor(code,emit){
     this.code=code;this.emit=emit;this.solo=false;this.state='LOBBY';this.mode='coop';this.teamMode='ffa';this.players=new Map();this.host=null;this.teams=[];
     this.arenas=new Map();this.tm=new Map();this.tickN=0;this.aidN=0;this.winner=null;this.seed=0;this.boardJ='';this.boardAt=0;this.overMsg=null;
-    this.reviveUsed=false;this.onScore=null;this.public=false;this.botAt=0;this.nextBot=0;this.autoAt=0;this.lobbyAt=0;this.botN=0;this.lastRound=1;this.lastWins={};this.roundBreak=0;
+    this.reviveUsed=false;this.onScore=null;this.onIslandXp=null;this.public=false;this.botAt=0;this.nextBot=0;this.autoAt=0;this.lobbyAt=0;this.botN=0;this.lastRound=1;this.lastWins={};this.roundBreak=0;
   }
   pl(){return[...this.players.values()]}
   humans(){return this.pl().filter(p=>!p.bot).length}
@@ -566,7 +566,7 @@ class Room{
       a.stations.forEach(o=>{if(o!==S&&!o.launched)o.launchAt=0});
       this.ea(a,'ev',{t:'l',s:S.id,tid:S.tid});this.emitBoard(now,true);
     }else if(this.mode==='tourney'||this.mode==='coop'){ // tournament stages / co-op levels
-      S.launched=true;carry();this.leaveBehind(a,S);a.dirty=true;
+      S.launched=true;carry();this.grantStageXp(a,S,now);this.leaveBehind(a,S);a.dirty=true;
       const final=this.mode==='tourney'&&T.stage>=MODES.tourney.stages.length;
       this.ea(a,'ev',{t:'l',s:S.id,tid:S.tid,stage:T.stage,final:final?1:0});
       if(final){this.winner=T.id;T.status='escaped';this.ea(a,'world',a.world());this.finishTourney(now);return}
@@ -575,6 +575,16 @@ class Room{
       this.emitBoard(now,true);
     }
   }
+
+  // Island XP: award once per player per stage when they escape. Server-only; onIslandXp is wired by server.js.
+  grantStageXp(a,S,now){
+    if(!this.onIslandXp||(this.mode!=='coop'&&this.mode!=='tourney'))return;
+    const stage=this.teams[S.tid]?this.teams[S.tid].stage:1;
+    const elapsed=Math.max(0,now-(a.startAt||now));
+    const solo=!!this.solo, mode=this.mode;
+    this.pl().filter(p=>p.tid===S.tid&&!p.bot&&p.uid&&p.status==='escaped').forEach(p=>{
+      try{this.onIslandXp({uid:p.uid,stage,solo,mode,elapsedMs:elapsed})}catch(e){}})}
+  
   leaveBehind(a,S){ // Multiplayer co-op: anyone not seated when the vehicle leaves is out for the rest of the run and only spectates from the next level
     if(this.mode!=='coop'||this.solo)return;
     this.pl().filter(p=>p.tid===S.tid&&p.aid===a.id&&p.status!=='escaped'&&p.status!=='spectator').forEach(p=>{
