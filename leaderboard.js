@@ -149,6 +149,11 @@ function create(log=console){
                          done_level=GREATEST(lb_profiles.done_level,EXCLUDED.done_level),
                          owned_skins=ARRAY(SELECT DISTINCT unnest(lb_profiles.owned_skins||EXCLUDED.owned_skins)),
                          owned_scenery=ARRAY(SELECT DISTINCT unnest(lb_profiles.owned_scenery||EXCLUDED.owned_scenery)),updated_at=now()`,[guest,account]);
+        // island: the guest's private island moves to the account ONLY if the account has none yet (an existing account island is never overwritten).
+        // Wrapped in a savepoint so a missing lb_islands table (003_islands.sql not run yet) can never break the score/progress merge.
+        await c.query('SAVEPOINT isl');
+        try{await c.query('UPDATE lb_islands SET player_id=$2, updated_at=now() WHERE player_id=$1 AND NOT EXISTS (SELECT 1 FROM lb_islands WHERE player_id=$2)',[guest,account]);await c.query('RELEASE SAVEPOINT isl')}
+        catch(e){await c.query('ROLLBACK TO SAVEPOINT isl');log.error('[leaderboard] island not moved during merge:',e.message)}
         await c.query('INSERT INTO lb_links (guest_id,account_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[guest,account]);
         await c.query('DELETE FROM lb_players WHERE player_id=$1',[guest]); // cascades to the guest's scores + profile
       }
@@ -191,6 +196,6 @@ function create(log=console){
     try{await Promise.race([flush(),new Promise(r=>setTimeout(r,4000))])}catch(e){}
     try{if(pool)await pool.end()}catch(e){}
   }
-  return{record,rename,top,init,clear,status,close,validUid,cleanName,profile,progress,merge,remove,idList};
+  return{record,rename,top,init,clear,status,close,validUid,cleanName,profile,progress,merge,remove,idList,getPool:()=>pool}; // getPool: shared connection pool (null without DATABASE_URL) for island-store.js
 }
 module.exports={create,validUid,cleanName};
