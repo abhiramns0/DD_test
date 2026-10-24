@@ -53,7 +53,15 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:10px;text-align:center;padding:24px;background:rgba(127,211,230,.35);backdrop-filter:blur(2px);overflow-y:auto;touch-action:pan-y}
 .ov h1{margin:0;font-size:clamp(40px,12vw,76px);line-height:.95;color:#fff;font-weight:800;text-shadow:0 5px 0 var(--ink)}
 .ov .best{font-size:15px;font-weight:800;background:#fff;color:var(--ink);border-radius:14px;padding:6px 18px;margin:0;box-shadow:0 3px 0 #9fc3d6}
-#menu{gap:20px}#menu button{margin-top:0}#menu h1{margin-bottom:10px}
+#menu{gap:20px;padding:64px 24px calc(env(safe-area-inset-bottom,0px) + 96px)}#menu button{margin-top:0} /* top/bottom padding keeps the buttons clear of the sign-in pill (top) and the absolutely placed INVITE button (bottom) */
+#menu .mainbtns{display:flex;flex-direction:column;align-items:stretch;gap:22px;margin-top:10px} /* SOLO, MULTIPLAYER and MY ISLAND: one column, all as wide as the widest */
+#menu .mainbtns .pbg{align-items:stretch}#menu .mainbtns .pbg button{width:100%}#menu .mainbtns .pbg .best{align-self:center}
+.ov button.isl{position:relative;overflow:hidden;white-space:nowrap;background:linear-gradient(180deg,#52e0b8 0%,#1fb08f 100%);box-shadow:0 6px 0 #12806a,0 0 0 4px rgba(255,255,255,.7),0 12px 24px rgba(18,128,106,.35);text-shadow:0 2px 0 rgba(10,80,66,.45)}
+.ov button.isl .ico{display:inline-block;margin-right:.35em;filter:drop-shadow(0 2px 0 rgba(10,80,66,.35))}
+.ov button.isl::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);animation:islShine 4.5s ease-in-out infinite}
+@keyframes islShine{0%,70%{left:-60%}100%{left:130%}}
+.ov button.isl:active{transform:translateY(4px);box-shadow:0 2px 0 #12806a,0 0 0 4px rgba(255,255,255,.7),0 6px 12px rgba(18,128,106,.35)}
+@media (prefers-reduced-motion:reduce){.ov button.isl::after{animation:none;display:none}}#menu h1{margin-bottom:10px}
 .ov p{margin:0;font-size:clamp(16px,4.5vw,22px);font-weight:700}
 .ov button{margin-top:14px;font:inherit;font-weight:800;font-size:clamp(26px,8vw,40px);padding:12px 54px;border:0;border-radius:40px;background:var(--accent);color:#fff;box-shadow:0 6px 0 #c85a32;cursor:pointer}
 .ov button:active{transform:translateY(4px);box-shadow:0 2px 0 #c85a32}
@@ -189,9 +197,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="cd"></div><div id="banner"></div><div id="toast"></div><div id="net">● Connecting…</div>
 <div class="ov" id="menu"><h1 id="menuTitle"><img id="titleImg" alt="Drowning Dash" hidden><span id="titleTxt">DROWNING<br>DASH</span></h1><p>Build. Escape. Survive.</p>
 <button class="acct" id="signInBtn">👤 GUEST · SIGN IN</button>
-<div class="pbg" style="margin-top:14px"><button id="solo">SOLO</button><p class="best" id="best"></p></div>
+<div class="mainbtns"><div class="pbg"><button id="solo">SOLO</button><p class="best" id="best"></p></div>
 <div class="pbg"><button id="multi">MULTIPLAYER</button><p class="best" id="bestmp"></p></div>
-<button class="inv" id="islandBtn">🏝️ MY ISLAND</button>
+<div class="pbg"><button class="isl" id="islandBtn" aria-label="My island"><span class="ico" aria-hidden="true">🏝️</span>MY ISLAND</button></div></div>
 <button class="inv" id="invMenu">📨 INVITE FRIENDS</button></div>
 <div class="ov" id="mp" style="display:none"><h1 style="font-size:clamp(32px,9vw,54px)">MULTIPLAYER</h1>
 <button id="qpBtn">QUICK PLAY</button><button id="hostBtn">HOST A ROOM</button>
