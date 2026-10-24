@@ -110,6 +110,12 @@ function createSession(uid,voyage,savedDiscoveries){
   const seed=String(uid)+':v'+voyage;
   const world=generateWorld(seed);
   const disc=normalizeDiscoveries(savedDiscoveries);
+
+  const seed=String(uid)+':world';
+// NPCs/wildlife still vary per voyage:
+npcs:spawnNpcs(String(uid)+':npc:v'+voyage,CFG.npcBoats),
+wildlife:spawnWildlife(String(uid)+':wild:v'+voyage,CFG.wildlife),
+  
   // Mark already-collected treasures from prior voyages so they don't respawn as collectible
   for(const t of world.treasures)if(disc.treasures.includes(t.id))t.collected=true;
   else t.collected=false;
@@ -274,11 +280,9 @@ function collectTreasure(session,now){
 
 function returnHome(session){
   if(!session||session.status!=='sailing')return{ok:false,err:'not_sailing'};
-  if(!session.nearHome&&Math.hypot(session.player.x,session.player.y)>CFG.returnR*1.15){
-    return{ok:false,err:'too_far'}}
   session.status='docked';
   session.discoveries.voyages=(session.discoveries.voyages|0)+1;
-  return{ok:true,discoveries:packDiscoveries(session)}}
+  return{ok:true,nearHome:!!session.nearHome,discoveries:packDiscoveries(session)}}
 
 // Snapshot for the client renderer (no secrets, plain data)
 function view(session){
