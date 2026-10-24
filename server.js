@@ -21,6 +21,7 @@ const srv=http.createServer((q,s)=>{
     want.forEach(w=>{const f=findStatic(w);o[w]=f?{found:true,bytes:fs.statSync(f).size}:{found:false}});
     s.setHeader('Content-Type','application/json');s.end(JSON.stringify(o,null,1));return}
   if(u==='/health/auth'){s.setHeader('Content-Type','application/json');s.end(JSON.stringify(Object.assign(auth.status(),{clientUrl:!!auth.publicUrl,clientKey:!!auth.publicKey})));return} // which sign-in settings are present (no secrets)
+  if(u==='/health/island'){s.setHeader('Content-Type','application/json');s.end(JSON.stringify(island.status()));return} // {store:'postgres'|'memory',persistent,ok} - no secrets
   if(u==='/health/db'){s.setHeader('Content-Type','application/json');s.end(JSON.stringify(board.status()));return} // {db:'ok'|'down'|'not_configured',queued:n} - no secrets
   if(u==='/admin/clear-leaderboard'){
     const qs=new URLSearchParams((q.url.split('?')[1])||''),key=process.env.ADMIN_KEY||'';
@@ -44,6 +45,7 @@ const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'}});
 
 // ---------- leaderboard: PostgreSQL (Supabase) via leaderboard.js. Credentials: DATABASE_URL (server environment only) ----------
 const board=require('./leaderboard').create(console);
+const island=require('./island-store').create({pool:board.getPool(),log:console}); // persistent private islands (island.js = rules, island-store.js = storage)
 const auth=require('./auth').create(console); // Supabase sign-in (Google / Apple / email). Optional: without it everyone is a guest.
 // Developer-only reset: set ADMIN_KEY in the environment, then open  /admin/clear-leaderboard?key=<ADMIN_KEY>&confirm=yes
 const adminClear=()=>board.clear();
@@ -55,7 +57,7 @@ const mkRoom=(opts)=>{const code=newCode(),socks=new Map();
   const rm=new Room(code,(e,d,to)=>{if(to){for(const id of to){const k=socks.get(id);if(k)k.emit(e,d)}}else io.to(code).emit(e,d)});
   rm.socks=socks;rm.solo=!!opts.solo;rm.public=!!opts.public&&!opts.solo;rm.onScore=board.record;if(MODES[opts.mode])rm.mode=opts.mode;if(opts.teamMode==='teams')rm.teamMode='teams';rooms.set(code,rm);return rm};
 io.on('connection',s=>{
-  let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0]};
+  let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0],isl:[0,0]};
   const lim=(k,max,perSec)=>{const b=bucket[k],t=Date.now();b[0]=Math.min(max,b[0]+(t-b[1])/1000*perSec);b[1]=t;if(b[0]<1)return false;b[0]--;return true};
   const applyOwned=()=>{if(room&&myProf){const p=room.players.get(pid);if(p&&!p.bot)p.ownedSkins=myProf.skins}}; // purchased premium skins come from the database, never from the client
   const join=rm=>{room=rm;s.join(rm.code);rm.socks.set(pid,s);rm.addPlayer(pid,tok);applyOwned()};
@@ -119,10 +121,20 @@ io.on('connection',s=>{
         if(!a||a.uid!==identUid)return reply({ok:false,err:'bad_token'});
         if(!auth.canDelete)return reply({ok:false,err:'not_configured'});
         await auth.deleteUser(a.id)}
-      await board.remove(identUid);
+      await board.remove(identUid);await island.remove(identUid);
       if(room){const rm=room;room=null;rm.socks.delete(pid);s.leave(rm.code);rm.removePlayer(pid);if(!rm.humans())rooms.delete(rm.code)}
       identUid=null;identAuthed=false;myAcct=null;myProf=null;reply({ok:true})
     }catch(e){console.error('[auth] delete account failed:',e.message);reply({ok:false,err:'failed'})}});
+  // PRIVATE ISLAND. The owner is ALWAYS identUid (the id this connection proved in 'ident': a verified Supabase account, or the guest's own id).
+  // Nothing the client sends can name another owner - the payload has no id field at all.
+  s.on('island:load',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!lim('isl',10,1))return reply({ok:false,err:'busy'});
+    reply(await island.load(identUid))});
+  s.on('island:act',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!d||typeof d!=='object'||!lim('isl',10,1))return reply({ok:false,err:'busy'});
+    reply(await island.act(identUid,d.action,d.rev))});
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
     if(!lim('lb',6,1))return cb({rows:[],me:null,busy:1});
     board.top(d&&d.kind==='mp'?'mp':'solo',identUid||(d&&board.validUid(d.uid)?d.uid:'')).then(cb).catch(()=>cb({rows:[],me:null,error:'unavailable'}))});
@@ -144,5 +156,5 @@ io.on('connection',s=>{
 // steady game loop: self-correcting timer (setInterval drifts), so every client gets evenly spaced snapshots
 {const step=1000/CFG.tick;let next=Date.now();(function loop(){const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)});next+=step;if(next<Date.now()-250)next=Date.now();setTimeout(loop,Math.max(1,next-Date.now()))})()}
 const PORT=process.env.PORT||3000;
-srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init()}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
+srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init()}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
 for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{board.close().finally(()=>process.exit(0))}); // flush queued scores on redeploy/restart
