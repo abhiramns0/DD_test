@@ -99,7 +99,8 @@ function defaultStructures(){
 function createDefault(){
   return{v:SCHEMA,unlocked:Object.values(ZONES).filter(z=>z.start).map(z=>z.id),
     structures:defaultStructures(),nextId:8,
-    progress:{level:1,xp:0,totalXp:0},awards:[],resources:{}}}
+    progress:{level:1,xp:0,totalXp:0},awards:[],resources:{},
+    sea:{islets:[],treasures:[],voyages:0,treasureCount:0}}}
 
 // ---- load-time check / repair of a stored document. Never throws on odd data; refuses documents written by a NEWER game version
 // (so an old server can never overwrite newer data).  -> {ok,doc,dropped} | {ok:false,err}
@@ -112,6 +113,14 @@ function normalize(raw){
     .map(id=>typeof id==='string'?(ZONE_ALIAS[id]||id):null)
     .filter(id=>id&&ZONES[id]))];
   for(const z of Object.values(ZONES))if(z.start&&!unlocked.includes(z.id))unlocked.push(z.id);
+
+  //added
+    const rawSea=raw.sea&&typeof raw.sea==='object'&&!Array.isArray(raw.sea)?raw.sea:{};
+  const sea={
+    islets:Array.isArray(rawSea.islets)?rawSea.islets.filter(id=>typeof id==='string').slice(0,200):[],
+    treasures:Array.isArray(rawSea.treasures)?rawSea.treasures.filter(id=>typeof id==='string').slice(0,200):[],
+    voyages:isInt(rawSea.voyages)&&rawSea.voyages>=0&&rawSea.voyages<=1e6?rawSea.voyages:0,
+    treasureCount:isInt(rawSea.treasureCount)&&rawSea.treasureCount>=0&&rawSea.treasureCount<=1e6?rawSea.treasureCount:0};
 
   // Progress: prefer totalXp; fall back to deriving from a legacy level-only document.
   const rawProg=raw.progress&&typeof raw.progress==='object'&&!Array.isArray(raw.progress)?raw.progress:{};
@@ -194,11 +203,24 @@ function view(doc,rev){
     .map(z=>({id:z.id,xp:z.xp||0}))
     .sort((a,b)=>a.xp-b.xp);
   return{v:SCHEMA,rev,grid:GRID,tiles:terrainGrid(doc.unlocked),
+             sea:{voyages:doc.sea&&doc.sea.voyages||0,treasures:doc.sea&&doc.sea.treasureCount||0,islets:(doc.sea&&doc.sea.islets||[]).length},
     zones:Object.values(ZONES).map(z=>({id:z.id,x:z.x,y:z.y,w:z.w,h:z.h,unlocked:doc.unlocked.includes(z.id),xp:z.xp||0})),
     structures:doc.structures.map(o=>{const d=STRUCTURES[o.type];return{id:o.id,type:o.type,kind:d.kind,label:d.label,x:o.x,y:o.y,w:d.w,h:d.h,removable:d.removable}}),
     placeable:Object.values(STRUCTURES).filter(d=>d.placeable).map(d=>({type:d.type,label:d.label})),
     progress:{level:into.level,xp:into.xp,need:into.need,totalXp:into.totalXp},
     nextZones,limits:{decor:MAX_DECOR}}}
+
+function applySeaDiscoveries(doc,disc){
+  if(!doc||!disc)return{ok:false,err:'bad'};
+  const next=JSON.parse(JSON.stringify(doc));
+  if(!next.sea)next.sea={islets:[],treasures:[],voyages:0,treasureCount:0};
+  const s=next.sea;
+  if(Array.isArray(disc.islets))for(const id of disc.islets)if(typeof id==='string'&&!s.islets.includes(id))s.islets.push(id);
+  if(Array.isArray(disc.treasures))for(const id of disc.treasures)if(typeof id==='string'&&!s.treasures.includes(id))s.treasures.push(id);
+  if(Number.isInteger(disc.voyages)&&disc.voyages>s.voyages)s.voyages=disc.voyages;
+  if(Number.isInteger(disc.treasureCount)&&disc.treasureCount>s.treasureCount)s.treasureCount=disc.treasureCount;
+  s.islets=s.islets.slice(0,200);s.treasures=s.treasures.slice(0,200);
+  return{ok:true,doc:next}}
 
 module.exports={SCHEMA,GRID,ZONES,ZONE_ALIAS,STRUCTURES,XP,MAX_DECOR,MAX_AWARDS,
   createDefault,normalize,apply,awardXp,stageXp,levelFromXp,xpIntoLevel,zonesForXp,
