@@ -53,9 +53,23 @@ const adminClear=()=>board.clear();
 const CH='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const newCode=()=>{let c;do{c=Array.from({length:4},()=>CH[Math.random()*CH.length|0]).join('')}while(rooms.has(c));return c};
 const hex=n=>crypto.randomBytes(n).toString('hex');
+const IRules=require('./island'); // pure XP formulas (no storage)
 const mkRoom=(opts)=>{const code=newCode(),socks=new Map();
   const rm=new Room(code,(e,d,to)=>{if(to){for(const id of to){const k=socks.get(id);if(k)k.emit(e,d)}}else io.to(code).emit(e,d)});
-  rm.socks=socks;rm.solo=!!opts.solo;rm.public=!!opts.public&&!opts.solo;rm.onScore=board.record;if(MODES[opts.mode])rm.mode=opts.mode;if(opts.teamMode==='teams')rm.teamMode='teams';rooms.set(code,rm);return rm};
+  rm.socks=socks;rm.solo=!!opts.solo;rm.public=!!opts.public&&!opts.solo;rm.onScore=board.record;
+  // Island XP is server-authoritative: amount + dedupe key are computed here, never trusted from the client.
+  rm.onIslandXp=({uid,stage,solo,mode,elapsedMs})=>{
+    const amount=IRules.stageXp(stage,solo,elapsedMs);
+    const key='stage:'+mode+':'+(solo?'s':'m')+':'+Math.max(1,stage|0);
+    island.grantXp(uid,amount,key).then(r=>{
+      if(!r||!r.ok||!r.gained)return;
+      // Push to every socket in this room whose player id matches the rewarded uid.
+      for(const [pid,sock] of socks){
+        const pl=rm.players.get(pid);
+        if(pl&&pl.uid===uid){try{sock.emit('island:xp',{gained:r.gained,unlocked:r.unlocked||[],levelUp:!!r.levelUp,progress:r.island&&r.island.progress,island:r.island})}catch(e){}}
+      }
+    }).catch(()=>{})};
+  if(MODES[opts.mode])rm.mode=opts.mode;if(opts.teamMode==='teams')rm.teamMode='teams';rooms.set(code,rm);return rm};
 io.on('connection',s=>{
   let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0],isl:[0,0]};
   const lim=(k,max,perSec)=>{const b=bucket[k],t=Date.now();b[0]=Math.min(max,b[0]+(t-b[1])/1000*perSec);b[1]=t;if(b[0]<1)return false;b[0]--;return true};
