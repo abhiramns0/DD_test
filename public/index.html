@@ -247,7 +247,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="dlg" id="cfm"><div><h2 id="cfmT"></h2><p id="cfmP"></p><button class="stay" id="cfmNo">CANCEL</button><button class="go" id="cfmYes"></button></div></div>
 <div class="dlg" id="leave"><div><h2>LEAVE GAME?</h2><p id="leavemsg"></p><button class="stay" id="stay">KEEP PLAYING</button><button class="go" id="leavego">LEAVE</button></div></div>
 <div class="ov" id="lbv" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">LEADERBOARD</h1><div class="seg modes" id="lbtabs"><button data-k="solo" class="on">SOLO</button><button data-k="mp">MULTIPLAYER</button></div><p class="hint" id="lbHint">Highest level reached</p><div id="lbList"></div><button class="sec" id="lbBack">BACK</button></div>
-<div class="ov" id="island" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">MY ISLAND</h1><canvas id="islandCv" style="width:min(92vw,52vh);height:min(92vw,52vh);border-radius:22px;box-shadow:0 6px 0 rgba(39,64,90,.3);touch-action:manipulation"></canvas><p class="hint" id="islandMsg">Loading your island…</p><button class="sec" id="islandBack">BACK</button></div>
+<div class="ov" id="island" style="display:none"><h1 style="font-size:clamp(28px,7vw,44px)">MY ISLAND</h1><canvas id="islandCv" style="width:min(96vw,72vh);height:min(72vw,58vh);border-radius:22px;box-shadow:0 6px 0 rgba(39,64,90,.3);touch-action:none;cursor:grab"></canvas><p class="hint" id="islandMsg">Loading your island…</p><button class="sec" id="islandBack">BACK</button></div>
 <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
 <h3>GOAL</h3><p>The island is sinking! Collect 🪵 wood, 🍃 leaves and ⚡ energy, build your vehicle, board it and escape before the water wins.</p>
 <h3>CONTROLS</h3><p>Drag to move. Stand next to trees, logs, bushes and crystals to collect. Stand at your station to build, then climb aboard.</p>
@@ -263,7 +263,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="pop" id="instHelp"><div class="pcard"><h2>Install Drowning Dash</h2><p id="instSteps" class="steps"></p><button class="pbtn" id="instOk">GOT IT</button></div></div>
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
-<script src="/island-view.js?v=1"></script>
+<script src="/island-view.js?v=2"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1566,8 +1566,12 @@ async function openIsland(){
   islSay(ISL?'Offline — showing your last view. Reconnect to refresh.':'Couldn’t load your island. Check your connection and try again.');islPaint()}
 $('islandBtn').onclick=e=>{e.stopPropagation();openIsland()};
 $('islandBack').onclick=()=>show('menu');
-$('islandCv').onclick=e=>{if(!ISL||!window.IslandView)return;const s=IslandView.hit($('islandCv'),ISL,e.clientX,e.clientY);islSel=s?s.id:'';islSay(IslandView.info(s));islPaint()};
-socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)}); // reconnect while looking at the island: reload it from the server
+let islTap=null;
+$('islandCv').onpointerdown=e=>{islTap={x:e.clientX,y:e.clientY,t:Date.now()}};
+$('islandCv').onclick=e=>{if(!ISL||!window.IslandView)return;
+  if(islTap&&(Math.hypot(e.clientX-islTap.x,e.clientY-islTap.y)>8||Date.now()-islTap.t>400)){islTap=null;return} // was a pan, not a tap
+  islTap=null;const s=IslandView.hit($('islandCv'),ISL,e.clientX,e.clientY);islSel=s?s.id:'';islSay(IslandView.info(s));islPaint()};
+ socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)}); // reconnect while looking at the island: reload it from the server
 window.addEventListener('resize',()=>{if(islOpen())islPaint()});
 /* first-run flow (sign-in choice, then name) is started by startFlow() in the accounts block */
 // ---------- leaderboard ----------
