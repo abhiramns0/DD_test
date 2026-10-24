@@ -107,15 +107,11 @@ function spawnWildlife(seed,count){
 
 // ---- session document (in-memory while sailing; discoveries persist via packDiscoveries)
 function createSession(uid,voyage,savedDiscoveries){
-  const seed=String(uid)+':v'+voyage;
-  const world=generateWorld(seed);
+  // World layout is stable per player so collected treasure IDs stay valid across voyages.
+  // Voyage only re-rolls NPCs/wildlife. Use ONE seed binding only (duplicate const crashes Node).
+  const worldSeed=String(uid)+':world';
+  const world=generateWorld(worldSeed);
   const disc=normalizeDiscoveries(savedDiscoveries);
-
-  const seed=String(uid)+':world';
-// NPCs/wildlife still vary per voyage:
-npcs:spawnNpcs(String(uid)+':npc:v'+voyage,CFG.npcBoats),
-wildlife:spawnWildlife(String(uid)+':wild:v'+voyage,CFG.wildlife),
-  
   // Mark already-collected treasures from prior voyages so they don't respawn as collectible
   for(const t of world.treasures)if(disc.treasures.includes(t.id))t.collected=true;
   else t.collected=false;
@@ -125,17 +121,17 @@ wildlife:spawnWildlife(String(uid)+':wild:v'+voyage,CFG.wildlife),
   const px=Math.cos(spawnA)*CFG.leaveR, py=Math.sin(spawnA)*CFG.leaveR;
 
   return{
-    uid,voyage,seed,startedAt:Date.now(),
+    uid,voyage,seed:worldSeed,startedAt:Date.now(),
     player:{x:px,y:py,vx:0,vy:0,facing:spawnA,hp:CFG.playerHp,maxHp:CFG.playerHp,alive:true,
       attackAt:0,vessel:'raft'},
     islets:world.islets,
     treasures:world.treasures,
-    npcs:spawnNpcs(seed,CFG.npcBoats),
-    wildlife:spawnWildlife(seed,CFG.wildlife),
-    intent:{mx:0,my:0}, // desired move direction -1..1
-    events:[],           // short-lived event log for the client (loot, collect, …)
+    npcs:spawnNpcs(String(uid)+':npc:v'+voyage,CFG.npcBoats),
+    wildlife:spawnWildlife(String(uid)+':wild:v'+voyage,CFG.wildlife),
+    intent:{mx:0,my:0},
+    events:[],
     discoveries:disc,
-    status:'sailing'     // sailing | returning | docked
+    status:'sailing'
   }}
 
 function normalizeDiscoveries(raw){
