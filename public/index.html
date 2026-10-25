@@ -53,9 +53,15 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:10px;text-align:center;padding:24px;background:rgba(127,211,230,.35);backdrop-filter:blur(2px);overflow-y:auto;touch-action:pan-y}
 .ov h1{margin:0;font-size:clamp(40px,12vw,76px);line-height:.95;color:#fff;font-weight:800;text-shadow:0 5px 0 var(--ink)}
 .ov .best{font-size:15px;font-weight:800;background:#fff;color:var(--ink);border-radius:14px;padding:6px 18px;margin:0;box-shadow:0 3px 0 #9fc3d6}
-#menu{gap:20px;padding:64px 24px calc(env(safe-area-inset-bottom,0px) + 96px)}#menu button{margin-top:0} /* top/bottom padding keeps the buttons clear of the sign-in pill (top) and the absolutely placed INVITE button (bottom) */
-#menu .mainbtns{display:flex;flex-direction:column;align-items:stretch;gap:22px;margin-top:10px} /* SOLO, MULTIPLAYER and MY ISLAND: one column, all as wide as the widest */
-#menu .mainbtns .pbg{align-items:stretch}#menu .mainbtns .pbg button{width:100%}#menu .mainbtns .pbg .best{align-self:center}
+#menu{gap:14px;padding:56px 24px calc(env(safe-area-inset-bottom,0px) + 88px)}#menu button{margin-top:0}
+#menu .mainbtns{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:6px;width:min(78vw,280px);max-width:100%}
+#menu .mainbtns .pbg{align-items:stretch;width:100%}#menu .mainbtns .pbg button{width:100%}#menu .mainbtns .pbg .best{align-self:center}
+#menu .mainbtns > button,#menu .mainbtns .pbg button{font-size:clamp(18px,5.2vw,26px)!important;padding:10px 28px!important;border-radius:28px;box-shadow:0 4px 0 #c85a32}
+#menu .mainbtns > button.isl,#menu .mainbtns .pbg button.isl{box-shadow:0 4px 0 #12806a,0 0 0 3px rgba(255,255,255,.7),0 8px 16px rgba(18,128,106,.3)}
+#menu .mainbtns > button:active,#menu .mainbtns .pbg button:active{transform:translateY(3px);box-shadow:0 1px 0 #c85a32}
+#menu .mainbtns > button.isl:active,#menu .mainbtns .pbg button.isl:active{box-shadow:0 1px 0 #12806a,0 0 0 3px rgba(255,255,255,.7),0 4px 8px rgba(18,128,106,.3)}
+#menu h1 img{max-height:22vh!important}
+ 
 .ov button.isl{position:relative;overflow:hidden;white-space:nowrap;background:linear-gradient(180deg,#52e0b8 0%,#1fb08f 100%);box-shadow:0 6px 0 #12806a,0 0 0 4px rgba(255,255,255,.7),0 12px 24px rgba(18,128,106,.35);text-shadow:0 2px 0 rgba(10,80,66,.45)}
 .ov button.isl .ico{display:inline-block;margin-right:.35em;filter:drop-shadow(0 2px 0 rgba(10,80,66,.35))}
 .ov button.isl::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);animation:islShine 4.5s ease-in-out infinite}
@@ -251,7 +257,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
  <div class="ov" id="island" style="display:none;padding:0;gap:0;justify-content:flex-start;background:linear-gradient(#7ec8e3,#58b9dc)">
   <div id="islandHud" style="position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;display:flex;flex-direction:column;align-items:center;pointer-events:none">
     <h1 style="font-size:clamp(22px,6vw,36px);margin:0;text-shadow:0 3px 0 var(--ink)">MY ISLAND</h1>
-    <div id="islandProg" style="width:min(92vw,420px);margin-top:8px;pointer-events:none;display:none">
+    <div id="islandProg" style="width:min(46vw,210px);margin-top:8px;margin-left:auto;margin-right:auto">
       <div style="display:flex;justify-content:space-between;align-items:baseline;font-weight:800;color:#fff;font-size:13px;margin-bottom:4px;text-shadow:0 1px 2px rgba(39,64,90,.5)"><span id="islandLvl">LVL 1</span><span id="islandXpTxt">0 XP</span></div>
       <div style="height:10px;border-radius:999px;background:rgba(39,64,90,.25);overflow:hidden;border:1px solid rgba(255,255,255,.45)"><div id="islandXpBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s ease"></div></div>
       <p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;color:rgba(255,255,255,.9);text-align:center;text-shadow:0 1px 2px rgba(39,64,90,.45)"></p>
@@ -1666,8 +1672,11 @@ async function enterSea(){
     const r=await emitP('sea:enter',{},8000);
     if(r&&r.ok){
       SEA=r.sea;show('sea');
-      try{$('lside').style.display='none';$('setBtn').style.display='none';$('side').style.display='none'}catch(e){}
-      seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
+     
+      // on successful sea enter:
+try{$('lside').style.display='none';$('setBtn').style.display='none';$('home').style.display='none';$('side').style.display='flex';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
+     
+     seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
       startSeaLoop();socket.emit('sea:intent',seaIntent);return}
     if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
     if(r&&r.err==='busy'){toast('Too many requests — try again.');return}
@@ -1680,7 +1689,9 @@ async function dockSea(){
   stopSeaLoop();
   if(r&&r.ok){
     if(r.island)ISL=r.island;
-    try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none'}catch(e){}
+    // on dock / leave sea:
+try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
+    
     const gems=(r.sea&&r.sea.treasureCount)||(ISL&&ISL.sea&&ISL.sea.treasures)||0;
     toast(r.nearHome?'🏠 Docked · 💎 '+gems:'Returned · discoveries saved · 💎 '+gems);
     show('island');islPaint();islSay('Welcome back. Treasures kept: 💎 '+gems);
