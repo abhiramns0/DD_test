@@ -224,4 +224,4 @@ function applySeaDiscoveries(doc,disc){
 
 module.exports={SCHEMA,GRID,ZONES,ZONE_ALIAS,STRUCTURES,XP,MAX_DECOR,MAX_AWARDS,
   createDefault,normalize,apply,awardXp,stageXp,levelFromXp,xpIntoLevel,zonesForXp,
-  view,terrainGrid,canStand,defaultStructures};
+  applySeaDiscoveries,view,terrainGrid,canStand,defaultStructures};
