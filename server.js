@@ -9,6 +9,12 @@ function seaVoyagerList(){
     list.push({uid,name:slot.name,player:slot.session.player,emoji:slot.emoji,emojiUntil:slot.emojiUntil,clanId:null});
   }
   return list}
+// Look up a player's voyage and re-attach it to the CURRENT socket. After a network blip the client gets a new
+// socket id; the old strict id check made every later tick/intent fail silently (frozen screen, ghost boat).
+function seaSlotFor(uid,s){
+  const slot=seaSessions.get(uid);if(!slot)return null;
+  if(slot.sockId!==s.id){slot.sockId=s.id;slot.dropAt=0}
+  return slot}
 function seaPackFor(uid,slot,now){
   const sess=slot.session;
   const others=Sea.othersView(uid,sess.player.x,sess.player.y,seaVoyagerList(),now||Date.now());
@@ -198,20 +204,19 @@ try{
       seaBroadcastNearby(identUid,'sea:presence',{op:'join',uid:identUid,name:String(name).slice(0,14)},session.player.x,session.player.y);
     }catch(e){console.error('[sea] enter',e.message);reply({ok:false,err:'unavailable'})}});
   s.on('sea:intent',(d)=>{
-    if(!identUid)return;const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return;
+    if(!identUid)return;const slot=seaSlotFor(identUid,s);if(!slot)return;
     const mx=d&&typeof d.mx==='number'?Math.max(-1,Math.min(1,d.mx)):0;
     const my=d&&typeof d.my==='number'?Math.max(-1,Math.min(1,d.my)):0;
     Sea.setIntent(slot.session,mx,my)});
   s.on('sea:tick',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
-    const now=Date.now();const dt=Math.min(0.1,(now-slot.lastTick)/1000);slot.lastTick=now;
-    Sea.tick(slot.session,dt,now);
+    const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
+    const now=Date.now(); // snapshot only: the server loop below owns the simulation clock
     reply({ok:true,sea:seaPackFor(identUid,slot,now)})});
   s.on('sea:act',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!d||typeof d!=='object'||!lim('isl',20,5))return reply({ok:false,err:'busy'});
-    const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
+    const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const now=Date.now();let r;
     if(d.op==='attack'){
       if(d.targetUid&&typeof d.targetUid==='string'&&d.targetUid!==identUid){
@@ -235,7 +240,7 @@ try{
   s.on('sea:emoji',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!lim('isl',15,5))return reply({ok:false,err:'busy'});
-    const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
+    const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const id=d&&typeof d.id==='string'?d.id:'';
     const now=Date.now();
     const v=Sea.validateEmoji(id,now,slot.emojiMeta);
@@ -274,8 +279,10 @@ try{
   s.on('again',()=>{if(room&&room.host===pid&&(room.state==='GAME_OVER'||(room.state==='PLAYING'&&SOLO))&&room.canStart(SOLO).ok)room.start(Date.now())});
   s.on('tolobby',()=>{if(room&&room.host===pid&&room.state==='GAME_OVER')room.toLobby()});
   s.on('dbg',d=>{if(DBG&&room)room.dbg(pid,d,Date.now())});
-  s.on('disconnect',()=>{if(!room)return;const rm=room;if(rm.socks.get(pid)!==s)return; // a newer socket already took over this slot
-                             if(identUid){const slot=seaSessions.get(identUid);if(slot&&slot.sockId===s.id)seaSessions.delete(identUid)}
+  s.on('disconnect',()=>{
+    if(identUid){const slot=seaSessions.get(identUid); // keep the voyage for a short grace period so a reconnect resumes it
+      if(slot&&slot.sockId===s.id){slot.sockId=null;slot.dropAt=Date.now()+25000;try{Sea.setIntent(slot.session,0,0)}catch(e){}}}
+    if(!room)return;const rm=room;if(rm.socks.get(pid)!==s)return; // a newer socket already took over this slot
     rm.socks.delete(pid);
     if(rm.state==='LOBBY')rm.removePlayer(pid);else rm.setOffline(pid,Date.now()); // grace period in game
     if(!rm.humans())rooms.delete(rm.code)});
@@ -284,16 +291,25 @@ try{
 {const step=1000/CFG.tick;let next=Date.now();(function loop(){const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)});next+=step;if(next<Date.now()-250)next=Date.now();setTimeout(loop,Math.max(1,next-Date.now()))})()}
 const PORT=process.env.PORT||3000;
 
+// Open Sea: ONE authoritative simulation clock on the server (previously the client's polling ALSO advanced it,
+// so boats sped up/stalled with each player's network). State is pushed to every sailor ~15x/s.
+{let last=Date.now();
 setInterval(()=>{
-  const now=Date.now();
+  const now=Date.now(),dt=Math.min(0.1,Math.max(0.001,(now-last)/1000));last=now;
   for(const [uid,slot] of seaSessions){
-    if(!slot||!slot.session||slot.session.status!=='sailing')continue;
-    const dt=Math.min(0.12,(now-slot.lastTick)/1000);
-    if(dt<0.04)continue;
-    slot.lastTick=now;
-    Sea.tick(slot.session,dt,now);
+    try{
+      if(!slot||!slot.session||slot.session.status!=='sailing')continue;
+      if(!slot.sockId&&slot.dropAt&&now>slot.dropAt){ // player never came back: save discoveries, free the boat
+        const p=slot.session.player,r=Sea.returnHome(slot.session);
+        seaSessions.delete(uid);
+        seaBroadcastNearby(null,'sea:presence',{op:'leave',uid},p.x,p.y);
+        if(r.ok)Promise.resolve(island.saveSea(uid,r.discoveries)).catch(()=>{});
+        continue}
+      Sea.tick(slot.session,dt,now);
+      if(slot.sockId){const sock=io.sockets.sockets.get(slot.sockId);if(sock)sock.emit('sea:state',seaPackFor(uid,slot,now))}
+    }catch(e){console.error('[sea] loop',e.message)}
   }
-},80);
+},66)}
 
 srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init()}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
 for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{board.close().finally(()=>process.exit(0))}); // flush queued scores on redeploy/restart
