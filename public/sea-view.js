@@ -1,4 +1,6 @@
 'use strict';
+// Canvas stays INSIDE #sea (position:absolute). Never use position:fixed here —
+// fixed + low z-index draws UNDER the #sea overlay (plain blue screen).
 (function(){
   const COL={
     deep:'#0d4a6a',mid:'#1a7a9a',lite:'#3a9ec4',foam:'#c8eef8',
@@ -8,9 +10,14 @@
   };
   let cam={x:0,y:0},_keys={};
 
-  function metrics(){
-    const w=Math.max(320,window.innerWidth||320);
-    const h=Math.max(480,window.innerHeight||480);
+  function metrics(canvas){
+    const parent=canvas.parentElement;
+    let w=0,h=0;
+    if(parent){w=parent.clientWidth|0;h=parent.clientHeight|0}
+    if(!w||!h){
+      w=Math.max(320,window.innerWidth||320);
+      h=Math.max(480,window.innerHeight||480);
+    }
     const A=Math.max(0.4,Math.min(w,h)/520);
     return{A,ox:w/2,oy:h/2,w,h};
   }
@@ -37,13 +44,22 @@
   function draw(canvas,snap){
     try{
       if(!canvas||!snap)return;
-      const m=metrics();
-      canvas.style.position='fixed';
-      canvas.style.left='0';canvas.style.top='0';
-      canvas.style.width=m.w+'px';canvas.style.height=m.h+'px';
-      canvas.style.zIndex='1';canvas.style.display='block';
+      const m=metrics(canvas);
+
+      // Stay inside #sea — do NOT use position:fixed
+      canvas.style.position='absolute';
+      canvas.style.left='0';
+      canvas.style.top='0';
+      canvas.style.right='0';
+      canvas.style.bottom='0';
+      canvas.style.width='100%';
+      canvas.style.height='100%';
+      canvas.style.zIndex='1';
+      canvas.style.display='block';
+      canvas.style.pointerEvents='auto';
+
       const dpr=Math.min(2,window.devicePixelRatio||1);
-      const bw=Math.round(m.w*dpr),bh=Math.round(m.h*dpr);
+      const bw=Math.max(1,Math.round(m.w*dpr)), bh=Math.max(1,Math.round(m.h*dpr));
       if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh}
       const g=canvas.getContext('2d');if(!g)return;
       g.setTransform(dpr,0,0,dpr,0,0);
@@ -54,13 +70,14 @@
       grd.addColorStop(0,COL.lite);grd.addColorStop(0.55,COL.mid);grd.addColorStop(1,COL.deep);
       g.fillStyle=grd;g.fillRect(0,0,m.w,m.h);
 
-      // Home
       const[hx,hy]=S(0,0,m,cam);
       const hr=(snap.cfg&&snap.cfg.homeR||180)*m.A;
       g.fillStyle=COL.homeSand;g.beginPath();g.ellipse(hx,hy,hr*1.1,hr*0.75,0,0,6.283);g.fill();
       g.fillStyle=COL.home;g.beginPath();g.ellipse(hx,hy,hr*0.9,hr*0.6,0,0,6.283);g.fill();
       g.font=Math.round(32*m.A)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
       g.fillText('🏝️',hx,hy);
+      g.font='bold '+Math.round(13*m.A)+'px system-ui';g.fillStyle='#fff';
+      g.fillText('HOME',hx,hy+hr*0.55);
 
       for(const it of(snap.islets||[])){
         const[x,y]=S(it.x,it.y,m,cam);const r=(it.r||50)*m.A;
@@ -90,6 +107,23 @@
         const[px,py]=S(snap.player.x,snap.player.y,m,cam);
         g.font='bold 12px system-ui';g.fillStyle='#fff';g.textAlign='center';
         g.fillText('YOU',px,py-50*m.A);
+        const pct=(snap.player.hp||100)/Math.max(1,snap.player.maxHp||100);
+        g.fillStyle='rgba(0,0,0,.4)';g.fillRect(px-28,py-62,56,6);
+        g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(px-28,py-62,56*pct,6);
+      }
+
+      if(snap.player&&!snap.nearHome){
+        const dx=-(snap.player.x||0),dy=-(snap.player.y||0);
+        const dist=Math.hypot(dx,dy)||1;
+        const ang=Math.atan2(dy,dx);
+        const edge=Math.min(m.w,m.h)*0.36;
+        const ix=m.ox+Math.cos(ang)*edge, iy=m.oy+Math.sin(ang)*edge;
+        g.save();g.translate(ix,iy);g.rotate(ang);
+        g.fillStyle='rgba(255,255,255,.6)';
+        g.beginPath();g.moveTo(16,0);g.lineTo(-10,-11);g.lineTo(-10,11);g.closePath();g.fill();
+        g.restore();
+        g.font='11px system-ui';g.fillStyle='#fff';g.textAlign='center';
+        g.fillText('HOME '+Math.round(dist),ix,iy+20);
       }
     }catch(e){try{console.error('[SeaView]',e)}catch(x){}}
   }
