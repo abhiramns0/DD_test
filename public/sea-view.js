@@ -106,6 +106,30 @@
     for(const n of(snap.npcs||[])){
       drawBoat(g,S(n.x,n.y,m,cam),n.facing,m.A,COL.boat,false)}
 
+        // Other human vessels (multiplayer)
+    for(const o of(snap.others||[])){
+      drawDetailedBoat(g,S(o.x,o.y,m,cam),o.facing,m.A*0.95,false);
+      const[ox,oy]=S(o.x,o.y,m,cam);
+      // name plate
+      g.font='bold '+Math.round(11*Math.max(0.85,m.A))+'px system-ui';
+      g.textAlign='center';g.textBaseline='bottom';
+      g.fillStyle='rgba(39,64,90,.75)';
+      const label=o.name||'Sailor';
+      const tw=g.measureText(label).width+10;
+      g.fillRect(ox-tw/2,oy-52*m.A,tw,16);
+      g.fillStyle='#fff';g.fillText(label,ox,oy-38*m.A);
+      // hp
+      const pct=(o.hp||0)/Math.max(1,o.maxHp||100);
+      g.fillStyle='rgba(0,0,0,.35)';g.fillRect(ox-22*m.A,oy-34*m.A,44*m.A,5*m.A);
+      g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(ox-22*m.A,oy-34*m.A,44*m.A*pct,5*m.A);
+      // emoji bubble
+      if(o.emoji&&o.emoji.id){
+        g.font=Math.round(22*Math.max(0.9,m.A))+'px sans-serif';
+        g.textAlign='center';g.textBaseline='middle';
+        g.fillText(o.emoji.id,ox,oy-68*m.A);
+      }
+    }
+
     // Player vessel
     if(snap.player&&snap.player.alive){
       drawBoat(g,S(snap.player.x,snap.player.y,m,cam),snap.player.facing,m.A,COL.player,true);
