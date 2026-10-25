@@ -2,162 +2,238 @@
 // Open Sea RENDERER. Draws the snapshot from sea.js > view(). No rules, no networking.
 (function(){
   const COL={
-    deep:'#1a6a8a',mid:'#2a8ab0',lite:'#4eb3d4',foam:'#c8eef8',
+    deep:'#0d4a6a',mid:'#1a7a9a',lite:'#3a9ec4',foam:'#c8eef8',
     home:'#7ccf6e',homeSand:'#f2dfa5',islet:'#6aba5c',isletSand:'#e8d9a0',
-    boat:'#c89a62',boatDark:'#8a6236',player:'#ffd34d',
-    wreck:'#5a4a3a',chest:'#e0b070',crate:'#b8895a',ink:'#27405a'
+    boat:'#c89a62',boatDark:'#8a6236',boatLite:'#e0b888',
+    player:'#e8b84a',playerDark:'#b88820',playerLite:'#ffe08a',
+    wreck:'#5a4a3a',ink:'#27405a',sail:'#fff8e8',sailStripe:'#e8d4b0'
   };
 
-  let cam={x:0,y:0}, _canvas=null, _drag=null, _keys={};
+  let cam={x:0,y:0}, _keys={};
 
   function metrics(canvas){
-    const r=canvas.getBoundingClientRect();
-    const A=Math.min(r.width,r.height)/900;
-    return{A,ox:r.width/2,oy:r.height/2,w:r.width,h:r.height}}
-
-  function S(x,y,m,c){
-    return[m.ox+(x-c.x)*m.A, m.oy+(y-c.y)*m.A]}
-
-  function draw(canvas,snap,opts){
-    opts=opts||{};
-    if(!canvas||!snap)return;
-    _canvas=canvas;
-    const dpr=Math.min(2,window.devicePixelRatio||1);
-    const r=canvas.getBoundingClientRect();
-    if(!r.width||!r.height)return;
-    if(canvas.width!==Math.round(r.width*dpr)||canvas.height!==Math.round(r.height*dpr)){
-      canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr)}
-    const g=canvas.getContext('2d'),m=metrics(canvas);
-    g.setTransform(dpr,0,0,dpr,0,0);
-    g.clearRect(0,0,m.w,m.h);
-
-    // Camera follows player
-    if(snap.player){cam.x=snap.player.x;cam.y=snap.player.y}
-
-    // Ocean
-    const grd=g.createRadialGradient(m.ox,m.oy,0,m.ox,m.oy,Math.max(m.w,m.h)*0.7);
-    grd.addColorStop(0,COL.lite);grd.addColorStop(0.55,COL.mid);grd.addColorStop(1,COL.deep);
-    g.fillStyle=grd;g.fillRect(0,0,m.w,m.h);
-
-    // Soft wave rings
-    const t=performance.now();
-    g.globalAlpha=0.18;
-    for(let i=0;i<5;i++){
-      const k=((t/4000+i/5)%1);
-      g.strokeStyle=COL.foam;g.lineWidth=2;
-      const[cx,cy]=S(cam.x,cam.y,m,cam);
-      g.beginPath();g.ellipse(cx,cy,(180+k*420)*m.A,(90+k*210)*m.A,0,0,6.283);g.stroke()}
-    g.globalAlpha=1;
-
-    // World boundary ring
-    if(snap.cfg){
-      const[bx,by]=S(0,0,m,cam);
-      g.strokeStyle='rgba(255,255,255,.2)';g.lineWidth=2;g.setLineDash([12,10]);
-      g.beginPath();g.arc(bx,by,snap.cfg.worldR*m.A,0,6.283);g.stroke();g.setLineDash([])}
-
-    // Home island
-    {
-      const[hx,hy]=S(0,0,m,cam);
-      const hr=(snap.cfg&&snap.cfg.homeR||180)*m.A;
-      g.fillStyle=COL.homeSand;
-      g.beginPath();g.ellipse(hx,hy,hr*1.05,hr*0.72,0,0,6.283);g.fill();
-      g.fillStyle=COL.home;
-      g.beginPath();g.ellipse(hx,hy,hr*0.88,hr*0.6,0,0,6.283);g.fill();
-      g.fillStyle=COL.ink;g.font=Math.round(14*Math.max(0.8,m.A*1.2))+'px system-ui';
-      g.textAlign='center';g.textBaseline='middle';g.fillText('🏠 HOME',hx,hy);
-      if(snap.nearHome){
-        g.strokeStyle='#ffd34d';g.lineWidth=3;g.globalAlpha=0.7+0.3*Math.sin(t/200);
-        g.beginPath();g.ellipse(hx,hy,hr*1.2,hr*0.82,0,0,6.283);g.stroke();g.globalAlpha=1}
+    let w=canvas.clientWidth|0, h=canvas.clientHeight|0;
+    if(!w||!h){
+      const r=canvas.getBoundingClientRect();
+      w=Math.round(r.width)||0; h=Math.round(r.height)||0;
     }
-
-    // Islets
-    for(const it of(snap.islets||[])){
-      const[x,y]=S(it.x,it.y,m,cam);
-      const r=it.r*m.A;
-      g.fillStyle=COL.isletSand;g.beginPath();g.ellipse(x,y,r*1.1,r*0.75,0,0,6.283);g.fill();
-      g.fillStyle=it.explored?COL.islet:'#5a9e4e';
-      g.beginPath();g.ellipse(x,y,r*0.9,r*0.62,0,0,6.283);g.fill();
-      g.font=Math.round(11*Math.max(0.8,m.A))+'px system-ui';g.fillStyle=COL.ink;
-      g.textAlign='center';g.fillText(it.explored?'✓ '+it.name:it.name,x,y+r*0.9+10)}
-
-    // Treasures
-    for(const tr of(snap.treasures||[])){
-      const[x,y]=S(tr.x,tr.y,m,cam);
-      g.font=Math.round(18*Math.max(0.85,m.A))+'px sans-serif';
-      g.textAlign='center';g.textBaseline='middle';
-      g.fillText(tr.kind==='chest'?'💎':'📦',x,y)}
-
-    // Wrecks
-    for(const w of(snap.wrecks||[])){
-      const[x,y]=S(w.x,w.y,m,cam);
-      g.fillStyle=COL.wreck;g.globalAlpha=0.7;
-      g.beginPath();g.ellipse(x,y,14*m.A,8*m.A,0,0,6.283);g.fill();
-      g.globalAlpha=1;
-      if(w.loot>0){g.font=Math.round(12*m.A)+'px sans-serif';g.fillText('✨',x,y-12*m.A)}}
-
-    // Wildlife
-    for(const w of(snap.wildlife||[])){
-      const[x,y]=S(w.x,w.y,m,cam);
-      g.font=Math.round(16*Math.max(0.85,m.A))+'px sans-serif';
-      g.textAlign='center';g.textBaseline='middle';
-      g.fillText(w.kind==='croc'?'🐊':'🐦',x,y)}
-
-    // NPC boats
-    for(const n of(snap.npcs||[])){
-      drawBoat(g,S(n.x,n.y,m,cam),n.facing,m.A,COL.boat,false)}
-
-        // Other human vessels (multiplayer)
-    for(const o of(snap.others||[])){
-      drawDetailedBoat(g,S(o.x,o.y,m,cam),o.facing,m.A*0.95,false);
-      const[ox,oy]=S(o.x,o.y,m,cam);
-      // name plate
-      g.font='bold '+Math.round(11*Math.max(0.85,m.A))+'px system-ui';
-      g.textAlign='center';g.textBaseline='bottom';
-      g.fillStyle='rgba(39,64,90,.75)';
-      const label=o.name||'Sailor';
-      const tw=g.measureText(label).width+10;
-      g.fillRect(ox-tw/2,oy-52*m.A,tw,16);
-      g.fillStyle='#fff';g.fillText(label,ox,oy-38*m.A);
-      // hp
-      const pct=(o.hp||0)/Math.max(1,o.maxHp||100);
-      g.fillStyle='rgba(0,0,0,.35)';g.fillRect(ox-22*m.A,oy-34*m.A,44*m.A,5*m.A);
-      g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(ox-22*m.A,oy-34*m.A,44*m.A*pct,5*m.A);
-      // emoji bubble
-      if(o.emoji&&o.emoji.id){
-        g.font=Math.round(22*Math.max(0.9,m.A))+'px sans-serif';
-        g.textAlign='center';g.textBaseline='middle';
-        g.fillText(o.emoji.id,ox,oy-68*m.A);
-      }
-    }
-
-    // Player vessel
-    if(snap.player&&snap.player.alive){
-      drawBoat(g,S(snap.player.x,snap.player.y,m,cam),snap.player.facing,m.A,COL.player,true);
-      // HP bar
-      const[px,py]=S(snap.player.x,snap.player.y,m,cam);
-      const pct=snap.player.hp/Math.max(1,snap.player.maxHp);
-      g.fillStyle='rgba(0,0,0,.35)';g.fillRect(px-18*m.A,py-28*m.A,36*m.A,5*m.A);
-      g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(px-18*m.A,py-28*m.A,36*m.A*pct,5*m.A)}
-
-    // HUD hint
-    g.fillStyle='rgba(39,64,90,.75)';
-    g.font=Math.round(12*Math.max(0.9,m.A))+'px system-ui';
-    g.textAlign='center';
-    if(snap.nearHome)g.fillText('🏠 Near home — press Dock / RETURN',m.ox,m.h-18);
-    else g.fillText('Drag or WASD to sail · Tap boat to attack · Collect 💎 📦',m.ox,m.h-18);
+    if(!w||!h){w=window.innerWidth||320;h=window.innerHeight||480}
+    const A=Math.max(0.35, Math.min(w,h)/520);
+    return{A,ox:w/2,oy:h/2,w,h};
   }
 
-  function drawBoat(g,pos,facing,A,col,isPlayer){
-    const[x,y]=pos;
-    g.save();g.translate(x,y);g.rotate(facing||0);
-    g.fillStyle=col;
-    g.beginPath();
-    g.moveTo(16*A,0);g.lineTo(-12*A,9*A);g.lineTo(-8*A,0);g.lineTo(-12*A,-9*A);g.closePath();
-    g.fill();
-    if(isPlayer){g.fillStyle='#fff';g.beginPath();g.moveTo(4*A,-2*A);g.lineTo(-4*A,-2*A);g.lineTo(-4*A,-14*A);g.lineTo(4*A,-2*A);g.fill()}
-    g.restore()}
+  function S(x,y,m,c){
+    return[m.ox+(x-c.x)*m.A, m.oy+(y-c.y)*m.A];
+  }
 
-  // Input helpers for the client
+  function draw(canvas,snap,opts){
+    try{
+      opts=opts||{};
+      if(!canvas||!snap)return;
+      const m=metrics(canvas);
+      const dpr=Math.min(2,window.devicePixelRatio||1);
+      const bw=Math.max(1,Math.round(m.w*dpr)), bh=Math.max(1,Math.round(m.h*dpr));
+      if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh}
+      const g=canvas.getContext('2d');
+      if(!g)return;
+      g.setTransform(dpr,0,0,dpr,0,0);
+      g.clearRect(0,0,m.w,m.h);
+
+      if(snap.player){cam.x=snap.player.x;cam.y=snap.player.y}
+
+      const grd=g.createRadialGradient(m.ox,m.oy,0,m.ox,m.oy,Math.max(m.w,m.h)*0.75);
+      grd.addColorStop(0,COL.lite);grd.addColorStop(0.5,COL.mid);grd.addColorStop(1,COL.deep);
+      g.fillStyle=grd;g.fillRect(0,0,m.w,m.h);
+
+      const t=performance.now();
+      g.globalAlpha=0.14;
+      for(let i=0;i<6;i++){
+        const k=((t/4500+i/6)%1);
+        g.strokeStyle=COL.foam;g.lineWidth=2;
+        g.beginPath();g.ellipse(m.ox,m.oy,(120+k*380)*m.A,(60+k*190)*m.A,0,0,6.283);g.stroke();
+      }
+      g.globalAlpha=1;
+
+      if(snap.cfg){
+        const[bx,by]=S(0,0,m,cam);
+        g.strokeStyle='rgba(255,255,255,.18)';g.lineWidth=2;g.setLineDash([12,10]);
+        g.beginPath();g.arc(bx,by,(snap.cfg.worldR||3200)*m.A,0,6.283);g.stroke();g.setLineDash([]);
+      }
+
+      {
+        const[hx,hy]=S(0,0,m,cam);
+        const hr=(snap.cfg&&snap.cfg.homeR||180)*m.A;
+        g.fillStyle=COL.homeSand;
+        g.beginPath();g.ellipse(hx,hy,hr*1.05,hr*0.72,0,0,6.283);g.fill();
+        g.fillStyle=COL.home;
+        g.beginPath();g.ellipse(hx,hy,hr*0.88,hr*0.58,0,0,6.283);g.fill();
+        g.font=Math.round(28*Math.max(0.9,m.A))+'px sans-serif';
+        g.textAlign='center';g.textBaseline='middle';
+        g.fillText('🏝️',hx,hy);
+      }
+
+      for(const it of(snap.islets||[])){
+        const[x,y]=S(it.x,it.y,m,cam);
+        const r=(it.r||50)*m.A;
+        g.fillStyle=COL.isletSand;
+        g.beginPath();g.ellipse(x,y,r*1.05,r*0.7,0,0,6.283);g.fill();
+        g.fillStyle=COL.islet;
+        g.beginPath();g.ellipse(x,y,r*0.85,r*0.55,0,0,6.283);g.fill();
+        if(it.explored){
+          g.font=Math.round(12*m.A)+'px system-ui';g.fillStyle='#fff';g.textAlign='center';
+          g.fillText(it.name||'',x,y+r*0.9);
+        }
+      }
+
+      for(const tr of(snap.treasures||[])){
+        const[x,y]=S(tr.x,tr.y,m,cam);
+        const bob=Math.sin(t/300+(tr.x||0))*3;
+        g.font=Math.round(26*Math.max(0.9,m.A))+'px sans-serif';
+        g.textAlign='center';g.textBaseline='middle';
+        g.shadowColor='rgba(0,0,0,.35)';g.shadowBlur=6;
+        g.fillText(tr.kind==='chest'?'💎':'📦',x,y+bob);g.shadowBlur=0;
+      }
+
+      for(const w of(snap.wrecks||[])){
+        const[x,y]=S(w.x,w.y,m,cam);
+        g.fillStyle=COL.wreck;g.globalAlpha=0.75;
+        g.beginPath();g.ellipse(x,y,22*m.A,12*m.A,0.3,0,6.283);g.fill();
+        g.globalAlpha=1;
+        if(w.loot>0){g.font=Math.round(16*m.A)+'px sans-serif';g.textAlign='center';g.fillText('✨',x,y-16*m.A)}
+      }
+
+      for(const w of(snap.wildlife||[])){
+        const[x,y]=S(w.x,w.y,m,cam);
+        g.font=Math.round(28*Math.max(0.9,m.A))+'px sans-serif';
+        g.textAlign='center';g.textBaseline='middle';
+        g.fillText(w.kind==='croc'?'🐊':'🐦',x,y);
+      }
+
+      for(const n of(snap.npcs||[])){
+        drawDetailedBoat(g,S(n.x,n.y,m,cam),n.facing,m.A,false);
+      }
+
+      for(const o of(snap.others||[])){
+        drawDetailedBoat(g,S(o.x,o.y,m,cam),o.facing,m.A*0.95,false);
+        const[ox,oy]=S(o.x,o.y,m,cam);
+        g.font='bold '+Math.round(11*Math.max(0.85,m.A))+'px system-ui';
+        g.textAlign='center';g.textBaseline='bottom';
+        g.fillStyle='rgba(39,64,90,.75)';
+        const label=o.name||'Sailor';
+        const tw=g.measureText(label).width+10;
+        g.fillRect(ox-tw/2,oy-52*m.A,tw,16);
+        g.fillStyle='#fff';g.fillText(label,ox,oy-38*m.A);
+        const pct=(o.hp||0)/Math.max(1,o.maxHp||100);
+        g.fillStyle='rgba(0,0,0,.35)';g.fillRect(ox-22*m.A,oy-34*m.A,44*m.A,5*m.A);
+        g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(ox-22*m.A,oy-34*m.A,44*m.A*pct,5*m.A);
+        if(o.emoji&&o.emoji.id){
+          g.font=Math.round(22*Math.max(0.9,m.A))+'px sans-serif';
+          g.textAlign='center';g.textBaseline='middle';
+          g.fillText(o.emoji.id,ox,oy-68*m.A);
+        }
+      }
+
+      if(snap.player&&snap.player.alive!==false){
+        drawDetailedBoat(g,S(snap.player.x,snap.player.y,m,cam),snap.player.facing,m.A,true);
+        const[px,py]=S(snap.player.x,snap.player.y,m,cam);
+        const pct=(snap.player.hp||0)/Math.max(1,snap.player.maxHp||100);
+        g.fillStyle='rgba(0,0,0,.4)';g.fillRect(px-28*m.A,py-48*m.A,56*m.A,7*m.A);
+        g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(px-28*m.A,py-48*m.A,56*m.A*pct,7*m.A);
+      }
+
+      if(snap.player&&!snap.nearHome){
+        drawHomeAnchor(g,m,cam,snap.player);
+      }
+    }catch(err){
+      try{console.error('[SeaView.draw]',err)}catch(e){}
+    }
+  }
+
+  function drawDetailedBoat(g,pos,facing,A,isPlayer){
+    const x=pos[0], y=pos[1];
+    const s=Math.max(8,A*1.15);
+    g.save();
+    g.translate(x,y);
+    g.rotate(facing||0);
+
+    g.globalAlpha=0.25;
+    g.fillStyle='#0a3040';
+    g.beginPath();g.ellipse(-s*6,s*2,s*18,s*7,0,0,6.283);g.fill();
+    g.globalAlpha=1;
+
+    const hull=isPlayer?COL.player:COL.boat;
+    const hullD=isPlayer?COL.playerDark:COL.boatDark;
+    const hullL=isPlayer?COL.playerLite:COL.boatLite;
+
+    g.fillStyle=hullD;
+    g.beginPath();
+    g.moveTo(-s*22,0);g.quadraticCurveTo(-s*10,s*12,s*16,s*8);
+    g.quadraticCurveTo(s*28,s*2,s*28,0);
+    g.quadraticCurveTo(s*28,-s*2,s*16,-s*8);
+    g.quadraticCurveTo(-s*10,-s*12,-s*22,0);
+    g.closePath();g.fill();
+
+    g.fillStyle=hull;
+    g.beginPath();
+    g.moveTo(-s*20,0);g.quadraticCurveTo(-s*8,s*9,s*14,s*6);
+    g.quadraticCurveTo(s*24,s*1,s*24,0);
+    g.quadraticCurveTo(s*24,-s*1,s*14,-s*6);
+    g.quadraticCurveTo(-s*8,-s*9,-s*20,0);
+    g.closePath();g.fill();
+
+    g.fillStyle=hullL;
+    g.beginPath();g.ellipse(s*2,0,s*12,s*4.5,0,0,6.283);g.fill();
+
+    g.fillStyle=hullD;
+    g.fillRect(-s*6,-s*7,s*10,s*6);
+    g.fillStyle='#7ec8e8';
+    g.fillRect(-s*4,-s*5,s*6,s*3);
+
+    g.strokeStyle='#5a4030';g.lineWidth=Math.max(1.5,s*0.35);
+    g.beginPath();g.moveTo(s*2.5,0);g.lineTo(s*2.5,-s*36);g.stroke();
+    g.fillStyle=COL.sail;
+    g.beginPath();
+    g.moveTo(s*2.5,-s*36);
+    g.quadraticCurveTo(s*28,-s*22,s*22,-s*6);
+    g.lineTo(s*2.5,-s*4);
+    g.closePath();g.fill();
+    g.strokeStyle=COL.sailStripe;g.lineWidth=1.2;
+    g.beginPath();g.moveTo(s*6,-s*30);g.quadraticCurveTo(s*20,-s*20,s*16,-s*10);g.stroke();
+
+    g.fillStyle=isPlayer?'#ff6b4a':'#4a8cff';
+    g.beginPath();g.moveTo(s*22,-s*4);g.lineTo(s*32,-s*1);g.lineTo(s*22,s*2);g.closePath();g.fill();
+
+    g.restore();
+  }
+
+  function drawHomeAnchor(g,m,cam,player){
+    const dx=-player.x, dy=-player.y;
+    const dist=Math.hypot(dx,dy)||1;
+    const ang=Math.atan2(dy,dx);
+    const edge=Math.min(m.w,m.h)*0.38;
+    const ix=m.ox+Math.cos(ang)*edge;
+    const iy=m.oy+Math.sin(ang)*edge;
+    g.save();
+    g.translate(ix,iy);
+    g.rotate(ang+Math.PI/2);
+    g.globalAlpha=0.55;
+    g.fillStyle='rgba(255,255,255,.2)';
+    g.beginPath();g.arc(0,0,22,0,6.283);g.fill();
+    g.strokeStyle='rgba(255,255,255,.45)';g.lineWidth=2;
+    g.beginPath();g.arc(0,0,22,0,6.283);g.stroke();
+    g.strokeStyle='#fff';g.fillStyle='#fff';g.lineWidth=2.4;g.lineCap='round';g.lineJoin='round';
+    g.beginPath();g.arc(0,-12,4.5,0,6.283);g.stroke();
+    g.beginPath();g.moveTo(0,-7);g.lineTo(0,10);g.stroke();
+    g.beginPath();g.moveTo(-10,4);g.quadraticCurveTo(-12,12,0,12);g.quadraticCurveTo(12,12,10,4);g.stroke();
+    g.beginPath();g.moveTo(-5,14);g.lineTo(0,20);g.lineTo(5,14);g.stroke();
+    g.globalAlpha=0.7;
+    g.font='11px system-ui';g.textAlign='center';g.textBaseline='top';
+    g.fillStyle='#fff';
+    g.rotate(-(ang+Math.PI/2));
+    g.fillText(Math.round(dist)+' u',0,26);
+    g.restore();
+  }
+
   function bindKeys(onChange){
     const fire=()=>{
       let mx=0,my=0;
@@ -165,11 +241,14 @@
       if(_keys['s']||_keys['arrowdown'])my+=1;
       if(_keys['a']||_keys['arrowleft'])mx-=1;
       if(_keys['d']||_keys['arrowright'])mx+=1;
-      onChange(mx,my)};
+      onChange(mx,my);
+    };
     window.addEventListener('keydown',e=>{
       const k=e.key.toLowerCase();_keys[k]=true;
-      if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)){e.preventDefault();fire()}});
-    window.addEventListener('keyup',e=>{_keys[e.key.toLowerCase()]=false;fire()})}
+      if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)){e.preventDefault();fire()}
+    });
+    window.addEventListener('keyup',e=>{_keys[e.key.toLowerCase()]=false;fire()});
+  }
 
   window.SeaView={draw,bindKeys,metrics};
 })();
