@@ -179,8 +179,11 @@ io.on('connection',s=>{
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!lim('isl',6,1))return reply({ok:false,err:'busy'});
     try{
-      const discPack=await island.saveSea(identUid,{});
-      const disc=discPack.ok&&discPack.sea?discPack.sea:{islets:[],treasures:[],voyages:0,treasureCount:0};
+      let disc={islets:[],treasures:[],voyages:0,treasureCount:0};
+try{
+  const discPack=await island.saveSea(identUid,{});
+  if(discPack&&discPack.ok&&discPack.sea)disc=discPack.sea;
+}catch(e){console.error('[sea] load discoveries',e.message)}
       const voyage=(disc.voyages|0)+1;
       const session=Sea.createSession(identUid,voyage,disc);
       const spread=((parseInt(String(identUid).slice(-4),16)||0)%360)*Math.PI/180;
