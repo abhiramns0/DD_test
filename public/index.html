@@ -332,7 +332,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=8"></script>
+ <script src="/sea-view.js?v=9"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1362,7 +1362,8 @@ function update(dt){
  if(st==='COUNTDOWN'){cd.style.display='flex';const c=Math.max(1,Math.ceil(-el));cd.textContent=c;if(c!==lastCd){lastCd=c;snd(440,.12,'sine',.08)}}
  else if(ACTIVE.includes(st)&&el<.9){cd.style.display='flex';cd.textContent='GO!';if(lastCd!==0){lastCd=0;snd(880,.25,'triangle',.1)}}else cd.style.display='none';
  const sI=myS();const showH=!!(me_&&sI&&(ACTIVE.includes(st)||st==='COUNTDOWN'));
- $('home').style.display=st==='MENU'?'none':'flex';$('setBtn').style.display=$('lside').style.display=st==='MENU'?'flex':'none';if(st==='MENU')$('leave').style.display='none';
+ const _inSea=$('sea').style.display==='flex'; // the sea screen shows ONLY the sound buttons
+ $('home').style.display=st==='MENU'?'none':'flex';$('setBtn').style.display=$('lside').style.display=(st==='MENU'&&!_inSea)?'flex':'none';if(st==='MENU')$('leave').style.display='none';
  $('inv').style.display=showH&&me_.status!=='spectator'?'block':'none';$('lvl').style.display=showH?'flex':'none';$('bcard').style.display=showH?'block':'none';$('obj').style.display=showH?'block':'none';
  if(showH)hud(me_,sI,now);
  // push button + cooldown ring
@@ -1666,7 +1667,7 @@ window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen=
 // ---- Open Sea (exploration + multiplayer encounters) ----
 let SEA=null,seaLoop=0,seaIntent={mx:0,my:0};
 const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
-const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView&&SEA)SeaView.draw(cv,SEA)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}};
+const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView&&SEA)SeaView.draw(cv,SEA)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}}; // feeds the renderer; its own animation loop does the drawing
  const seaSay=t=>{const el=$('seaMsg');if(el)el.textContent=t};
 function seaUpdateHud(){
   if(!SEA)return;
@@ -1684,13 +1685,46 @@ function seaHandleEvents(evs){
     else if(e.t==='loot')toast('✨ Loot +'+e.gained);
   });
 }
-async function seaStep(){
-  if(!seaOpen()||!SEA)return;
-  const r=await emitP('sea:tick',{},1500);
-  if(r&&r.ok&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud()}
+// The server simulates the sea and PUSHES 'sea:state' ~15x/s; drawing runs on its own animation frame loop
+// (SeaView.start), so the picture never waits on the network. The watchdog only steps in if pushes stop.
+let seaWatch=0,seaWatchBusy=false,seaFails=0,seaSentI={mx:0,my:0},seaSentAt=0;
+function applySea(sea){
+  if(!sea)return;
+  SEA=sea;seaFails=0;
+  try{SeaView.setState(sea)}catch(e){}
+  seaHandleEvents(sea.events);seaUpdateHud();
 }
-function startSeaLoop(){stopSeaLoop();seaLoop=setInterval(seaStep,1000/12)}
-function stopSeaLoop(){if(seaLoop){clearInterval(seaLoop);seaLoop=0}}
+async function seaWatchdog(force){
+  if(!seaOpen()||seaWatchBusy)return;
+  if(!force&&window.SeaView&&SeaView.stateAge()<1500)return;
+  seaWatchBusy=true;
+  try{
+    if(!socket.connected){seaSay('Reconnecting…');return}
+    const r=await emitP('sea:tick',{},2500);
+    if(r&&r.ok&&r.sea){applySea(r.sea);if(!SEA.nearHome)seaSay('Follow the anchor home · Dock when near 🏠');return}
+    seaFails++;
+    if(r&&r.err==='no_session'&&seaFails>=2){toast('Lost contact with the sea — returning to your island');seaWatchBusy=false;dockSea();return}
+    seaSay('Reconnecting…');
+  }finally{seaWatchBusy=false}
+}
+function startSeaLoop(){
+  stopSeaLoop();
+  try{SeaView.start($('seaCv'))}catch(e){}
+  seaWatch=setInterval(()=>seaWatchdog(false),1000);
+}
+function stopSeaLoop(){
+  if(seaWatch){clearInterval(seaWatch);seaWatch=0}
+  try{SeaView.stop()}catch(e){}
+}
+function seaSendIntent(mx,my){
+  mx=Math.round(mx*100)/100;my=Math.round(my*100)/100;
+  seaIntent={mx,my};
+  const now=performance.now(),moving=!!(mx||my);
+  if(moving&&now-seaSentAt<50&&Math.hypot(mx-seaSentI.mx,my-seaSentI.my)<0.1)return; // throttle drag spam
+  if(mx===seaSentI.mx&&my===seaSentI.my&&now-seaSentAt<400)return;
+  seaSentAt=now;seaSentI={mx,my};
+  if(socket.connected)socket.emit('sea:intent',seaIntent);
+}
 
 async function enterSea(){
   if(!window.SeaView){toast('Open Sea is not available right now.');return}
@@ -1699,10 +1733,9 @@ async function enterSea(){
   for(let i=0;i<2;i++){
     const r=await emitP('sea:enter',{},8000);
     if(r&&r.ok){
-                  SEA=r.sea;show('sea');
+                  try{SeaView.reset();SeaView.setState(r.sea)}catch(e){}SEA=r.sea;seaIntent={mx:0,my:0};seaSentI={mx:0,my:0};show('sea');
       try{$('lside').style.display='none';$('setBtn').style.display='none';$('home').style.display='none';$('side').style.display='flex';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
       seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
-      for(let i=0;i<8;i++)setTimeout(seaPaint,i*50);
       startSeaLoop();socket.emit('sea:intent',seaIntent);return}
    
     if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
@@ -1723,8 +1756,8 @@ async function dockSea(){
   }else{
     toast('Returned to island');
   }
-  SEA=null;
-  show('island');
+  SEA=null;try{SeaView.reset()}catch(e){}
+  seaIntent={mx:0,my:0};show('island');
   try{islPaint()}catch(e){}
   islSay('Welcome back.');
 }
@@ -1753,16 +1786,17 @@ $('seaCollect').onclick=async e=>{e.stopPropagation();
 
 (function(){
   const cv=$('seaCv');if(!cv)return;let drag=null;
+  const steer=e=>{ // drag direction on SCREEN -> sailing direction in the isometric world
+    const dx=e.clientX-drag.x,dy=e.clientY-drag.y,l=Math.hypot(dx,dy);
+    if(l<12){seaSendIntent(0,0);return}
+    const d=SeaView.dirToWorld(dx,dy);seaSendIntent(d.mx,d.my);
+  };
   cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};try{cv.setPointerCapture(e.pointerId)}catch(err){}});
-  cv.addEventListener('pointermove',e=>{
-    if(!drag)return;
-    const dx=e.clientX-drag.x,dy=e.clientY-drag.y,l=Math.hypot(dx,dy)||1;
-    if(l<12){seaIntent={mx:0,my:0}}else seaIntent={mx:dx/l,my:dy/l};
-    socket.emit('sea:intent',seaIntent);
-  });
-  cv.addEventListener('pointerup',()=>{drag=null;seaIntent={mx:0,my:0};socket.emit('sea:intent',seaIntent)});
-  cv.addEventListener('pointercancel',()=>{drag=null;seaIntent={mx:0,my:0};socket.emit('sea:intent',seaIntent)});
-  if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{seaIntent={mx,my};socket.emit('sea:intent',seaIntent)});
+  cv.addEventListener('pointermove',e=>{if(drag)steer(e)});
+  const end=()=>{drag=null;seaSendIntent(0,0)};
+  cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);cv.addEventListener('lostpointercapture',end);
+  if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{if(seaOpen())seaSendIntent(mx,my)});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&seaOpen()){seaSendIntent(0,0);setTimeout(()=>seaWatchdog(true),200)}});
 })();
 
 // Emoji signal menu (rate-limited on server; visible to nearby sailors only)
@@ -1776,6 +1810,8 @@ document.querySelectorAll('.seaEmo').forEach(btn=>{
     else if(r&&r.err==='rate')toast('Too many signals — wait a bit');
   };
 });
+socket.on('sea:state',d=>{if(d&&seaOpen())applySea(d)});
+socket.on('connect',()=>{if(seaOpen())setTimeout(()=>seaWatchdog(true),900)});
 socket.on('sea:emoji',d=>{
   if(!SEA||!d)return;
   if(SEA.others){
@@ -1786,7 +1822,7 @@ socket.on('sea:emoji',d=>{
 });
 socket.on('sea:event',d=>{
   if(!d)return;
-  if(d.sea){SEA=d.sea;seaPaint();seaUpdateHud()}
+  if(d.sea)applySea(d.sea);
   if(d.t==='pvp_sunk')toast('💥 Your ship was sunk by '+(d.by||'a sailor')+'!');
   else if(d.t==='pvp_hit')toast('⚔️ Hit by '+(d.by||'a sailor')+'!');
 });
