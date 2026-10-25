@@ -80,7 +80,27 @@ function create({pool=null,log=console,mem=new Map()}={}){
       return{ok:false,err:'stale'}
     }catch(e){return fail(e,'xp')}}
 
-    // saveSea = persist discoveries from a finished voyage (server-only).
+  // saveSea = persist discoveries from a finished voyage (server-only).
+  // Fallback merge lives here so an older island.js without applySeaDiscoveries cannot break Open Sea.
+  function mergeSeaDiscoveries(doc,disc){
+    if(typeof I.applySeaDiscoveries==='function'){
+      return I.applySeaDiscoveries(doc,disc||{});
+    }
+    if(!doc)return{ok:false,err:'bad'};
+    disc=disc||{};
+    const next=JSON.parse(JSON.stringify(doc));
+    if(!next.sea)next.sea={islets:[],treasures:[],voyages:0,treasureCount:0};
+    const s=next.sea;
+    if(!Array.isArray(s.islets))s.islets=[];
+    if(!Array.isArray(s.treasures))s.treasures=[];
+    if(Array.isArray(disc.islets))for(const id of disc.islets)if(typeof id==='string'&&!s.islets.includes(id))s.islets.push(id);
+    if(Array.isArray(disc.treasures))for(const id of disc.treasures)if(typeof id==='string'&&!s.treasures.includes(id))s.treasures.push(id);
+    if(Number.isInteger(disc.voyages)&&disc.voyages>(s.voyages|0))s.voyages=disc.voyages;
+    if(Number.isInteger(disc.treasureCount)&&disc.treasureCount>(s.treasureCount|0))s.treasureCount=disc.treasureCount;
+    s.islets=s.islets.slice(0,200);s.treasures=s.treasures.slice(0,200);
+    s.voyages=s.voyages|0;s.treasureCount=s.treasureCount|0;
+    return{ok:true,doc:next};
+  }
   async function saveSea(uid,discoveries){
     if(!validUid(uid))return{ok:false,err:'bad_id'};
     try{
@@ -89,9 +109,9 @@ function create({pool=null,log=console,mem=new Map()}={}){
         if(!row){await insert(uid,I.createDefault());row=await read(uid)}
         if(!row)return{ok:false,err:'unavailable'};
         const p=pack(row);if(!p.ok)return p;
-        const r=I.applySeaDiscoveries(p.doc,discoveries);if(!r.ok)return r;
+        const r=mergeSeaDiscoveries(p.doc,discoveries);if(!r.ok)return r;
         const rev=await write(uid,r.doc,p.rev);
-        if(rev){st.ok=true;return{ok:true,island:I.view(r.doc,rev),sea:r.doc.sea}}
+        if(rev){st.ok=true;return{ok:true,island:I.view(r.doc,rev),sea:r.doc.sea||{islets:[],treasures:[],voyages:0,treasureCount:0}}}
       }
       return{ok:false,err:'stale'}
     }catch(e){return fail(e,'sea')}}
