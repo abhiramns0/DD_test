@@ -1,7 +1,30 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
-const Sea=require('./sea'); // open-sea rules (pure)
-const seaSessions=new Map(); // uid -> {session, lastTick, sockId}
+const Sea=require('./sea'); // open-sea rules (pure) + multiplayer helpers
+const seaSessions=new Map(); // uid -> {session, lastTick, sockId, name, emoji, emojiUntil, emojiMeta}
+function seaVoyagerList(){
+  const list=[];
+  for(const [uid,slot] of seaSessions){
+    if(!slot||!slot.session||slot.session.status!=='sailing')continue;
+    list.push({uid,name:slot.name,player:slot.session.player,emoji:slot.emoji,emojiUntil:slot.emojiUntil,clanId:null});
+  }
+  return list}
+function seaPackFor(uid,slot,now){
+  const sess=slot.session;
+  const others=Sea.othersView(uid,sess.player.x,sess.player.y,seaVoyagerList(),now||Date.now());
+  return Sea.viewWithOthers(sess,others,now||Date.now())}
+function seaEmitTo(uid,event,payload){
+  const slot=seaSessions.get(uid);if(!slot||!slot.sockId)return;
+  try{const sock=io.sockets.sockets.get(slot.sockId);if(sock)sock.emit(event,payload)}catch(e){}}
+function seaBroadcastNearby(fromUid,event,payload,x,y){
+  for(const [uid,slot] of seaSessions){
+    if(!slot||!slot.session||slot.session.status!=='sailing')continue;
+    if(fromUid&&uid===fromUid)continue;
+    const p=slot.session.player;if(!p)continue;
+    if(Math.hypot(p.x-x,p.y-y)>Sea.CFG.aoiR)continue;
+    seaEmitTo(uid,event,payload);
+  }}
+
 const {Server}=require('socket.io');
 const {Room,CFG,MODES}=require('./game');
 const PROD=process.env.NODE_ENV==='production',SOLO=process.env.ALLOW_SOLO==='1'||!PROD,DBG=process.env.ALLOW_DEBUG==='1'||!PROD;
@@ -152,7 +175,7 @@ io.on('connection',s=>{
     if(!d||typeof d!=='object'||!lim('isl',10,1))return reply({ok:false,err:'busy'});
     reply(await island.act(identUid,d.action,d.rev))});
 
-  s.on('sea:enter',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+   s.on('sea:enter',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!lim('isl',6,1))return reply({ok:false,err:'busy'});
     try{
@@ -160,8 +183,16 @@ io.on('connection',s=>{
       const disc=discPack.ok&&discPack.sea?discPack.sea:{islets:[],treasures:[],voyages:0,treasureCount:0};
       const voyage=(disc.voyages|0)+1;
       const session=Sea.createSession(identUid,voyage,disc);
-      seaSessions.set(identUid,{session,lastTick:Date.now(),sockId:s.id});
-      reply({ok:true,sea:Sea.view(session)})
+      const spread=((parseInt(String(identUid).slice(-4),16)||0)%360)*Math.PI/180;
+      session.player.x=Math.cos(spread)*Sea.CFG.leaveR;
+      session.player.y=Math.sin(spread)*Sea.CFG.leaveR;
+      session.player.facing=spread;
+      const name=(myProf&&myProf.name)||(d&&typeof d.name==='string'?d.name:'')||'Sailor';
+      seaSessions.set(identUid,{session,lastTick:Date.now(),sockId:s.id,name:String(name).slice(0,14),
+        emoji:null,emojiUntil:0,emojiMeta:{lastAt:0,countWindowStart:0,countInWindow:0}});
+      const now=Date.now();
+      reply({ok:true,sea:seaPackFor(identUid,seaSessions.get(identUid),now)});
+      seaBroadcastNearby(identUid,'sea:presence',{op:'join',uid:identUid,name:String(name).slice(0,14)},session.player.x,session.player.y);
     }catch(e){console.error('[sea] enter',e.message);reply({ok:false,err:'unavailable'})}});
   s.on('sea:intent',(d)=>{
     if(!identUid)return;const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return;
@@ -173,25 +204,58 @@ io.on('connection',s=>{
     const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
     const now=Date.now();const dt=Math.min(0.1,(now-slot.lastTick)/1000);slot.lastTick=now;
     Sea.tick(slot.session,dt,now);
-    reply({ok:true,sea:Sea.view(slot.session)})});
+    reply({ok:true,sea:seaPackFor(identUid,slot,now)})});
   s.on('sea:act',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!d||typeof d!=='object'||!lim('isl',20,5))return reply({ok:false,err:'busy'});
     const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
-    const now=Date.now();
-    let r;
-    if(d.op==='attack')r=Sea.attack(slot.session,now);
+    const now=Date.now();let r;
+    if(d.op==='attack'){
+      if(d.targetUid&&typeof d.targetUid==='string'&&d.targetUid!==identUid){
+        const tSlot=seaSessions.get(d.targetUid);
+        if(!tSlot||!tSlot.session||tSlot.session.status!=='sailing')r={ok:false,err:'no_target'};
+        else{
+          r=Sea.pvpAttack(slot.session,tSlot.session.player,now);
+          if(r.ok&&r.sunk){
+            tSlot.session.events.push({t:'pvp_sunk',by:identUid,at:now});
+            seaEmitTo(d.targetUid,'sea:event',{t:'pvp_sunk',by:slot.name,sea:seaPackFor(d.targetUid,tSlot,now)});
+          }else if(r.ok&&r.hit){
+            seaEmitTo(d.targetUid,'sea:event',{t:'pvp_hit',by:slot.name,hp:tSlot.session.player.hp,sea:seaPackFor(d.targetUid,tSlot,now)});
+          }
+        }
+      }else r=Sea.attack(slot.session,now);
+    }
     else if(d.op==='loot')r=Sea.loot(slot.session,now);
     else if(d.op==='collect')r=Sea.collectTreasure(slot.session,now);
     else return reply({ok:false,err:'bad_action'});
-    reply(Object.assign({ok:!!r.ok},r,{sea:Sea.view(slot.session)}))});
+    reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}))});
+  s.on('sea:emoji',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!lim('isl',15,5))return reply({ok:false,err:'busy'});
+    const slot=seaSessions.get(identUid);if(!slot||slot.sockId!==s.id)return reply({ok:false,err:'no_session'});
+    const id=d&&typeof d.id==='string'?d.id:'';
+    const now=Date.now();
+    const v=Sea.validateEmoji(id,now,slot.emojiMeta);
+    if(!v.ok)return reply(v);
+    slot.emojiMeta=v.meta;slot.emoji=id;slot.emojiUntil=now+v.ttl;
+    const p=slot.session.player;
+    const payload={uid:identUid,name:slot.name,id,x:p.x,y:p.y,until:slot.emojiUntil};
+    for(const [uid,s2] of seaSessions){
+      if(!s2||!s2.session||s2.session.status!=='sailing')continue;
+      const op=s2.session.player;if(!op)continue;
+      if(Math.hypot(op.x-p.x,op.y-p.y)>Sea.CFG.aoiR)continue;
+      seaEmitTo(uid,'sea:emoji',payload);
+    }
+    reply({ok:true,id,until:slot.emojiUntil})});
   s.on('sea:return',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     const slot=seaSessions.get(identUid);if(!slot)return reply({ok:false,err:'no_session'});
     const r=Sea.returnHome(slot.session);
     if(!r.ok)return reply(r);
+    const px=slot.session.player.x,py=slot.session.player.y;
     const saved=await island.saveSea(identUid,r.discoveries);
     seaSessions.delete(identUid);
+    seaBroadcastNearby(null,'sea:presence',{op:'leave',uid:identUid},px,py);
     reply({ok:true,nearHome:!!r.nearHome,island:saved.ok?saved.island:undefined,sea:r.discoveries})});
   
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
@@ -216,5 +280,17 @@ io.on('connection',s=>{
 // steady game loop: self-correcting timer (setInterval drifts), so every client gets evenly spaced snapshots
 {const step=1000/CFG.tick;let next=Date.now();(function loop(){const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)});next+=step;if(next<Date.now()-250)next=Date.now();setTimeout(loop,Math.max(1,next-Date.now()))})()}
 const PORT=process.env.PORT||3000;
+
+setInterval(()=>{
+  const now=Date.now();
+  for(const [uid,slot] of seaSessions){
+    if(!slot||!slot.session||slot.session.status!=='sailing')continue;
+    const dt=Math.min(0.12,(now-slot.lastTick)/1000);
+    if(dt<0.04)continue;
+    slot.lastTick=now;
+    Sea.tick(slot.session,dt,now);
+  }
+},80);
+
 srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init()}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
 for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{board.close().finally(()=>process.exit(0))}); // flush queued scores on redeploy/restart
