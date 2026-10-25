@@ -288,6 +288,43 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     </div>
   </div>
 </div>
+
+ <div class="ov" id="sea" style="display:none;padding:0;gap:0;justify-content:flex-start;background:#0d4a6a">
+  <canvas id="seaCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;touch-action:none;cursor:grab"></canvas>
+
+  <!-- Top HUD -->
+  <div style="position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none">
+    <div id="seaHud" style="background:rgba(255,255,255,.88);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25)">Open Sea</div>
+    <button class="sec" id="seaDock" style="pointer-events:auto;display:none;margin:0;font-size:14px;padding:7px 14px">🏠 DOCK</button>
+  </div>
+
+  <!-- Bottom controls -->
+  <div style="position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;background:linear-gradient(transparent,rgba(10,40,60,.55))">
+    <p class="hint" id="seaMsg" style="color:#e8f6fc;margin:0;text-shadow:0 1px 2px rgba(0,0,0,.5)">Sailing…</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;pointer-events:auto">
+      <button class="sec" id="seaAttack" style="margin:0">⚔️ ATTACK</button>
+      <button class="sec" id="seaCollect" style="margin:0">💎 COLLECT</button>
+      <button class="sec" id="seaEmoji" style="margin:0">😊 SIGNAL</button>
+      <button class="sec" id="seaBack" style="margin:0">LEAVE SEA</button>
+    </div>
+  </div>
+
+  <!-- Emoji radial / panel (toggled by SIGNAL) -->
+  <div id="seaEmojiMenu" style="display:none;position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);z-index:4;background:rgba(255,255,255,.94);border-radius:18px;padding:10px;box-shadow:0 4px 0 rgba(39,64,90,.25);max-width:92vw">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:280px">
+      <button type="button" class="rb seaEmo" data-e="👋" style="width:40px;height:40px;font-size:20px;pointer-events:auto">👋</button>
+      <button type="button" class="rb seaEmo" data-e="😂" style="width:40px;height:40px;font-size:20px;pointer-events:auto">😂</button>
+      <button type="button" class="rb seaEmo" data-e="⚠️" style="width:40px;height:40px;font-size:20px;pointer-events:auto">⚠️</button>
+      <button type="button" class="rb seaEmo" data-e="⚔️" style="width:40px;height:40px;font-size:20px;pointer-events:auto">⚔️</button>
+      <button type="button" class="rb seaEmo" data-e="🤝" style="width:40px;height:40px;font-size:20px;pointer-events:auto">🤝</button>
+      <button type="button" class="rb seaEmo" data-e="⛵" style="width:40px;height:40px;font-size:20px;pointer-events:auto">⛵</button>
+      <button type="button" class="rb seaEmo" data-e="💎" style="width:40px;height:40px;font-size:20px;pointer-events:auto">💎</button>
+      <button type="button" class="rb seaEmo" data-e="🆘" style="width:40px;height:40px;font-size:20px;pointer-events:auto">🆘</button>
+      <button type="button" class="rb seaEmo" data-e="👍" style="width:40px;height:40px;font-size:20px;pointer-events:auto">👍</button>
+      <button type="button" class="rb seaEmo" data-e="❤️" style="width:40px;height:40px;font-size:20px;pointer-events:auto">❤️</button>
+    </div>
+  </div>
+</div>
  
  <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
 <h3>GOAL</h3><p>The island is sinking! Collect 🪵 wood, 🍃 leaves and ⚡ energy, build your vehicle, board it and escape before the water wins.</p>
@@ -305,7 +342,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=1"></script>
+ <script src="/sea-view.js?v=4"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1636,7 +1673,7 @@ $('islandCv').onpointerdown=e=>{islTap={x:e.clientX,y:e.clientY,t:Date.now()}};
 socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)});
 window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen==='function'&&seaOpen())seaPaint()});
 
-// ---- Open Sea (single-player exploration foundation) ----
+// ---- Open Sea (exploration + multiplayer encounters) ----
 let SEA=null,seaLoop=0,seaIntent={mx:0,my:0};
 const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
 const seaPaint=()=>{if(window.SeaView&&SEA)SeaView.draw($('seaCv'),SEA)};
@@ -1644,7 +1681,8 @@ const seaSay=t=>{const el=$('seaMsg');if(el)el.textContent=t};
 function seaUpdateHud(){
   if(!SEA)return;
   const d=SEA.discoveries||{};
-  const hud=$('seaHud');if(hud)hud.textContent='⛵ Sea · 💎 '+(d.treasures||0)+' · 🏝️ '+(d.islets||0)+' islets';
+  const n=(SEA.others&&SEA.others.length)||0;
+  const hud=$('seaHud');if(hud)hud.textContent='⛵ Sea · 💎 '+(d.treasures||0)+' · 🏝️ '+(d.islets||0)+' · 👥 '+n;
   const dock=$('seaDock');if(dock)dock.style.display=SEA.nearHome?'':'none';
   if(SEA.nearHome)seaSay('Near home — Dock to return to your island');
 }
@@ -1672,11 +1710,8 @@ async function enterSea(){
     const r=await emitP('sea:enter',{},8000);
     if(r&&r.ok){
       SEA=r.sea;show('sea');
-     
-      // on successful sea enter:
-try{$('lside').style.display='none';$('setBtn').style.display='none';$('home').style.display='none';$('side').style.display='flex';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
-     
-     seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
+      try{$('lside').style.display='none';$('setBtn').style.display='none';$('home').style.display='none';$('side').style.display='flex';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
+      seaPaint();seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
       startSeaLoop();socket.emit('sea:intent',seaIntent);return}
     if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
     if(r&&r.err==='busy'){toast('Too many requests — try again.');return}
@@ -1689,9 +1724,7 @@ async function dockSea(){
   stopSeaLoop();
   if(r&&r.ok){
     if(r.island)ISL=r.island;
-    // on dock / leave sea:
-try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
-    
+    try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
     const gems=(r.sea&&r.sea.treasureCount)||(ISL&&ISL.sea&&ISL.sea.treasures)||0;
     toast(r.nearHome?'🏠 Docked · 💎 '+gems:'Returned · discoveries saved · 💎 '+gems);
     show('island');islPaint();islSay('Welcome back. Treasures kept: 💎 '+gems);
@@ -1704,7 +1737,19 @@ try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').s
 $('islandSail').onclick=e=>{e.stopPropagation();enterSea()};
 $('seaDock').onclick=e=>{e.stopPropagation();dockSea()};
 $('seaBack').onclick=e=>{e.stopPropagation();dockSea()};
-$('seaAttack').onclick=async e=>{e.stopPropagation();const r=await emitP('sea:act',{op:'attack'},2000);if(r&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud()}};
+$('seaAttack').onclick=async e=>{e.stopPropagation();
+  // Optional engagement: nearest human ship in PvP range, else NPC
+  let targetUid=null;
+  if(SEA&&SEA.others&&SEA.others.length){
+    const range=(SEA.mp&&SEA.mp.pvpRange)||90;
+    const near=SEA.others.find(o=>o.dist<=range);
+    if(near)targetUid=near.uid;
+  }
+  const payload=targetUid?{op:'attack',targetUid}:{op:'attack'};
+  const r=await emitP('sea:act',payload,2000);
+  if(r&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud();
+    if(r.sunk)toast('⚔️ Ship sunk!');else if(r.hit&&targetUid)toast('⚔️ Hit!');else if(r.err==='range')toast('Too far to engage');}
+};
 $('seaCollect').onclick=async e=>{e.stopPropagation();
   let r=await emitP('sea:act',{op:'collect'},2000);
   if(r&&!r.ok&&r.err==='nothing')r=await emitP('sea:act',{op:'loot'},2000);
@@ -1725,13 +1770,42 @@ $('seaCollect').onclick=async e=>{e.stopPropagation();
   if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{seaIntent={mx,my};socket.emit('sea:intent',seaIntent)});
 })();
 
+// Emoji signal menu (rate-limited on server; visible to nearby sailors only)
+$('seaEmoji').onclick=e=>{e.stopPropagation();const m=$('seaEmojiMenu');if(m)m.style.display=m.style.display==='none'?'block':'none'};
+document.querySelectorAll('.seaEmo').forEach(btn=>{
+  btn.onclick=async e=>{e.stopPropagation();
+    const id=btn.getAttribute('data-e');
+    const m=$('seaEmojiMenu');if(m)m.style.display='none';
+    const r=await emitP('sea:emoji',{id},2000);
+    if(r&&r.err==='cooldown')toast('Signal cooling down');
+    else if(r&&r.err==='rate')toast('Too many signals — wait a bit');
+  };
+});
+socket.on('sea:emoji',d=>{
+  if(!SEA||!d)return;
+  if(SEA.others){
+    const o=SEA.others.find(x=>x.uid===d.uid);
+    if(o)o.emoji={id:d.id,until:d.until};
+  }
+  seaPaint();
+});
+socket.on('sea:event',d=>{
+  if(!d)return;
+  if(d.sea){SEA=d.sea;seaPaint();seaUpdateHud()}
+  if(d.t==='pvp_sunk')toast('💥 Your ship was sunk by '+(d.by||'a sailor')+'!');
+  else if(d.t==='pvp_hit')toast('⚔️ Hit by '+(d.by||'a sailor')+'!');
+});
+socket.on('sea:presence',d=>{
+  if(!d||!seaOpen())return;
+  if(d.op==='join')toast('⛵ '+(d.name||'Sailor')+' set sail nearby');
+});
+
 $('islandCv').onclick=e=>{
   if(!ISL||!window.IslandView)return;
   if(islTap&&(Math.hypot(e.clientX-islTap.x,e.clientY-islTap.y)>8||Date.now()-islTap.t>400)){islTap=null;return}
   islTap=null;const s=IslandView.hit($('islandCv'),ISL,e.clientX,e.clientY);islSel=s?s.id:'';islSay(IslandView.info(s));islPaint();
   if(s&&s.type==='jetty')islSay('Boat Jetty — your raft is ready. Tap Sail Out to explore.');
 };
-
  
 // ---------- leaderboard ----------
 let lbKind='solo';
