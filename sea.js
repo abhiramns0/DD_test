@@ -13,7 +13,7 @@ const CFG = {
   speed: 165,
   npcSpeed: 70,
   wildSpeed: 55,
-  tickHz: 12,
+  tickHz: 15,
   npcBoats: 5,
   wildlife: 8,
   islets: 7,
@@ -34,7 +34,8 @@ const CFG = {
   emojiTtlMs: 2500,
   emojiCooldownMs: 1200,
   emojiMaxPerMin: 12,
-  partyMax: 6,
+  partyMax: 4,
+  teamInviteRange: 160,
   regenSeconds: 30,
   seaCooldownMs: 30000,
   intentStaleMs: 1500,
@@ -47,7 +48,13 @@ const CFG = {
   npcContactCdMs: 1100,
   boatRadius: 28,
   treasureRespawnMs: 45000,
-  maxTreasures: 14
+  maxTreasures: 14,
+  wreckTtlMs: 10000,
+  raceEventCount: 2,
+  raceCheckpoints: 5,
+  raceRadius: 220,
+  raceCheckpointR: 70,
+  raceJoinR: 200
 };
 
 const EMOJIS = ['👋', '😂', '🏳️', '⚔️', '🤝', '⛵', '💎', '🆘', '👍', '❤️'];
@@ -194,6 +201,41 @@ function spawnWildlife(seed, count) {
   return out;
 }
 
+function spawnRaces(seed) {
+  const rnd = rng(seed + ':race');
+  const out = [];
+  for (let i = 0; i < CFG.raceEventCount; i++) {
+    let x = 0, y = 0, ok = false;
+    for (let t = 0; t < 50 && !ok; t++) {
+      const a = rnd() * Math.PI * 2;
+      const d = CFG.homeR + 500 + rnd() * (CFG.worldR - CFG.homeR - 700);
+      x = Math.cos(a) * d;
+      y = Math.sin(a) * d;
+      ok = len(x, y) > CFG.homeR + 400;
+    }
+    if (!ok) continue;
+    const cps = [];
+    const n = CFG.raceCheckpoints;
+    for (let c = 0; c < n; c++) {
+      const a = (c / n) * Math.PI * 2 + rnd() * 0.4;
+      const d = 180 + rnd() * 280;
+      cps.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, r: CFG.raceCheckpointR });
+    }
+    // finish is last checkpoint, slightly larger
+    cps[cps.length - 1].r = CFG.raceCheckpointR * 1.25;
+    cps[cps.length - 1].finish = true;
+    out.push({
+      id: 'race_' + i,
+      x, y,
+      r: CFG.raceRadius,
+      checkpoints: cps,
+      entrants: {}, // uid -> { startAt, nextCp, finishedAt, name }
+      board: [] // finished: { uid, name, ms }
+    });
+  }
+  return out;
+}
+
 function ensureShared() {
   if (SHARED) return SHARED;
   const world = generateWorld(sharedSeed);
@@ -204,7 +246,9 @@ function ensureShared() {
     npcs: spawnNpcs(sharedSeed, CFG.npcBoats),
     wildlife: spawnWildlife(sharedSeed, CFG.wildlife),
     lastTreasureSpawn: Date.now(),
-    playerWrecks: []
+    playerWrecks: [],
+    races: spawnRaces(sharedSeed),
+    teams: new Map() // teamId -> { id, leader, members:Set, invites:Map }
   };
   return SHARED;
 }
@@ -299,11 +343,13 @@ function steerNpc(e, tx, ty, speed, dt) {
   const d = Math.hypot(dx, dy) || 1;
   const wx = (dx / d) * speed;
   const wy = (dy / d) * speed;
-  e.vx += (wx - e.vx) * Math.min(1, dt * 2.2);
-  e.vy += (wy - e.vy) * Math.min(1, dt * 2.2);
+  // Higher accel so joystick feels immediate and smooth (no laggy catch-up)
+  const k = Math.min(1, dt * 5.5);
+  e.vx += (wx - e.vx) * k;
+  e.vy += (wy - e.vy) * k;
   e.x += e.vx * dt;
   e.y += e.vy * dt;
-  e.facing = Math.atan2(e.vy, e.vx);
+  if (Math.hypot(e.vx, e.vy) > 4) e.facing = Math.atan2(e.vy, e.vx);
   const c = clampToWorld(e.x, e.y);
   e.x = c.x;
   e.y = c.y;
@@ -375,6 +421,7 @@ function resolveBoatBoat(a, b, r) {
 function tickShared(dt, now, playerPositions) {
   ensureShared();
   const W = SHARED;
+  cleanWrecks(now);
   for (const n of W.npcs) {
     if (!n.alive) continue;
     let target = null;
@@ -528,6 +575,12 @@ function tick(session, dt, now) {
   }
   autoCollect(session, now);
   session.nearHome = Math.hypot(p.x, p.y) <= CFG.returnR;
+  // race checkpoint progress
+  const raceRes = raceTickPlayer(session.uid, p, now);
+  if (raceRes) {
+    if (raceRes.finished) session.events.push({ t: 'race_finish', ms: raceRes.ms, place: raceRes.place, at: now });
+    else if (raceRes.checkpoint) session.events.push({ t: 'race_cp', cp: raceRes.checkpoint, at: now });
+  }
   return session;
 }
 
@@ -568,6 +621,7 @@ function attack(session, now) {
   if (hit.hp <= 0) {
     hit.alive = false;
     hit.hp = 0;
+    hit.diedAt = now;
     session.events.push({ t: 'kill', id: hit.id, kind: hit.kind, loot: hit.loot | 0, at: now });
     return { ok: true, hit: true, killed: true, id: hit.id, loot: hit.loot | 0 };
   }
@@ -654,6 +708,14 @@ function addPlayerWreck(uid, x, y, loot) {
     loot: loot | 0,
     at: Date.now()
   });
+  // keep list bounded
+  if (SHARED.playerWrecks.length > 40) SHARED.playerWrecks.splice(0, SHARED.playerWrecks.length - 40);
+}
+
+function cleanWrecks(now) {
+  ensureShared();
+  const ttl = CFG.wreckTtlMs;
+  SHARED.playerWrecks = SHARED.playerWrecks.filter((w) => now - (w.at || 0) < ttl);
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -711,11 +773,11 @@ function view(session, opts) {
       })),
     wrecks: session.npcs
       .filter((n) => !n.alive && near(n))
-      .map((n) => ({ id: n.id, x: r1(n.x), y: r1(n.y), loot: n.loot | 0 }))
+      .map((n) => ({ id: n.id, x: r1(n.x), y: r1(n.y), loot: n.loot | 0, at: n.diedAt || 0 }))
       .concat(
         SHARED.playerWrecks
-          .filter((w) => near(w))
-          .map((w) => ({ id: w.id, x: r1(w.x), y: r1(w.y), loot: w.loot | 0 }))
+          .filter((w) => near(w) && (Date.now() - (w.at || 0)) < CFG.wreckTtlMs)
+          .map((w) => ({ id: w.id, x: r1(w.x), y: r1(w.y), loot: w.loot | 0, at: w.at || 0 }))
       ),
     events: drain,
     discoveries: {
@@ -769,6 +831,7 @@ function othersView(selfUid, selfX, selfY, voyagerList, now) {
       hp: r1(v.player.hp),
       maxHp: v.player.maxHp || CFG.playerHp,
       clanId: v.clanId || null,
+      team: sameTeam(selfUid, v.uid),
       emoji: bubble,
       dist: Math.round(d)
     });
@@ -777,12 +840,143 @@ function othersView(selfUid, selfX, selfY, voyagerList, now) {
   return out.slice(0, 24);
 }
 
-function pvpAttack(attackerSession, targetPlayer, now) {
+function sameTeam(uidA, uidB) {
+  if (!uidA || !uidB || uidA === uidB) return false;
+  ensureShared();
+  for (const team of SHARED.teams.values()) {
+    if (team.members.has(uidA) && team.members.has(uidB)) return true;
+  }
+  return false;
+}
+
+function getTeamFor(uid) {
+  ensureShared();
+  for (const team of SHARED.teams.values()) {
+    if (team.members.has(uid)) return team;
+  }
+  return null;
+}
+
+function teamInvite(fromUid, toUid, fromName, toName, fromPos, toPos) {
+  ensureShared();
+  if (!fromUid || !toUid || fromUid === toUid) return { ok: false, err: 'bad' };
+  const d = Math.hypot((fromPos.x || 0) - (toPos.x || 0), (fromPos.y || 0) - (toPos.y || 0));
+  if (d > CFG.teamInviteRange) return { ok: false, err: 'far' };
+  let team = getTeamFor(fromUid);
+  if (team) {
+    if (team.leader !== fromUid) return { ok: false, err: 'not_leader' };
+    if (team.members.size >= CFG.partyMax) return { ok: false, err: 'full' };
+    if (team.members.has(toUid)) return { ok: false, err: 'already' };
+  } else {
+    // create provisional team led by inviter
+    const id = 't_' + fromUid + '_' + Date.now();
+    team = { id, leader: fromUid, members: new Set([fromUid]), invites: new Map(), names: new Map([[fromUid, fromName || 'Sailor']]) };
+    SHARED.teams.set(id, team);
+  }
+  if (getTeamFor(toUid)) return { ok: false, err: 'target_teamed' };
+  team.invites.set(toUid, { from: fromUid, name: fromName || 'Sailor', at: Date.now() });
+  team.names.set(fromUid, fromName || 'Sailor');
+  return { ok: true, teamId: team.id, toUid };
+}
+
+function teamAccept(uid, teamId, name) {
+  ensureShared();
+  const team = SHARED.teams.get(teamId);
+  if (!team) return { ok: false, err: 'no_team' };
+  if (!team.invites.has(uid)) return { ok: false, err: 'no_invite' };
+  if (team.members.size >= CFG.partyMax) return { ok: false, err: 'full' };
+  if (getTeamFor(uid)) return { ok: false, err: 'already' };
+  team.invites.delete(uid);
+  team.members.add(uid);
+  team.names.set(uid, name || 'Sailor');
+  return { ok: true, teamId, leader: team.leader, members: [...team.members] };
+}
+
+function teamLeave(uid) {
+  ensureShared();
+  const team = getTeamFor(uid);
+  if (!team) return { ok: false, err: 'no_team' };
+  team.members.delete(uid);
+  team.names.delete(uid);
+  team.invites.delete(uid);
+  if (team.members.size === 0) {
+    SHARED.teams.delete(team.id);
+    return { ok: true, dissolved: true };
+  }
+  if (team.leader === uid) {
+    // promote next member (first remaining)
+    team.leader = [...team.members][0];
+  }
+  return { ok: true, leader: team.leader, members: [...team.members] };
+}
+
+function teamInfo(uid) {
+  const team = getTeamFor(uid);
+  if (!team) return null;
+  return {
+    id: team.id,
+    leader: team.leader,
+    members: [...team.members].map((m) => ({ uid: m, name: team.names.get(m) || 'Sailor', leader: m === team.leader }))
+  };
+}
+
+function raceJoin(uid, name, player, raceId) {
+  ensureShared();
+  const race = (SHARED.races || []).find((r) => r.id === raceId);
+  if (!race) return { ok: false, err: 'no_race' };
+  if (race.entrants[uid] && !race.entrants[uid].finishedAt) return { ok: false, err: 'already' };
+  const d = Math.hypot(player.x - race.x, player.y - race.y);
+  if (d > CFG.raceJoinR) return { ok: false, err: 'far' };
+  race.entrants[uid] = { startAt: Date.now(), nextCp: 0, finishedAt: 0, name: name || 'Sailor' };
+  return { ok: true, raceId, checkpoints: race.checkpoints.length };
+}
+
+function raceTickPlayer(uid, player, now) {
+  ensureShared();
+  for (const race of SHARED.races || []) {
+    const ent = race.entrants[uid];
+    if (!ent || ent.finishedAt) continue;
+    const cp = race.checkpoints[ent.nextCp];
+    if (!cp) continue;
+    if (Math.hypot(player.x - cp.x, player.y - cp.y) <= cp.r) {
+      ent.nextCp++;
+      if (ent.nextCp >= race.checkpoints.length) {
+        ent.finishedAt = now;
+        const ms = now - ent.startAt;
+        race.board.push({ uid, name: ent.name, ms });
+        race.board.sort((a, b) => a.ms - b.ms);
+        if (race.board.length > 20) race.board.length = 20;
+        return { finished: true, ms, place: race.board.findIndex((b) => b.uid === uid) + 1 };
+      }
+      return { checkpoint: ent.nextCp };
+    }
+  }
+  return null;
+}
+
+function racesNear(x, y) {
+  ensureShared();
+  return (SHARED.races || [])
+    .filter((r) => Math.hypot(r.x - x, r.y - y) < CFG.aoiR + r.r)
+    .map((r) => ({
+      id: r.id,
+      x: r1(r.x),
+      y: r1(r.y),
+      r: r.r,
+      checkpoints: r.checkpoints.map((c) => ({ x: r1(c.x), y: r1(c.y), r: c.r, finish: !!c.finish })),
+      board: r.board.slice(0, 10),
+      entrants: Object.keys(r.entrants).length
+    }));
+}
+
+function pvpAttack(attackerSession, targetPlayer, now, attackerUid, targetUid) {
   if (!attackerSession || attackerSession.status !== 'sailing')
     return { ok: false, err: 'not_sailing' };
   const p = attackerSession.player;
   if (!p || !p.alive) return { ok: false, err: 'dead' };
   if (!targetPlayer || !targetPlayer.alive) return { ok: false, err: 'no_target' };
+  if (attackerUid && targetUid && sameTeam(attackerUid, targetUid))
+    return { ok: false, err: 'teammate' };
   if (now < (p.pvpAt || 0)) return { ok: false, err: 'cooldown' };
   const look = 0.12;
   const ax = p.x + (p.vx || 0) * look;
@@ -821,13 +1015,39 @@ function viewWithOthers(session, others, now, opts) {
   const v = view(session, opts);
   if (!v) return null;
   v.others = others || [];
+  const p = session.player;
+  v.races = racesNear(p.x, p.y);
+  v.team = teamInfo(session.uid);
+  // pending invite for this player
+  ensureShared();
+  v.teamInvite = null;
+  for (const team of SHARED.teams.values()) {
+    if (team.invites.has(session.uid)) {
+      const inv = team.invites.get(session.uid);
+      v.teamInvite = { teamId: team.id, from: inv.from, name: inv.name };
+      break;
+    }
+  }
+  // race progress for self
+  v.raceProgress = null;
+  for (const race of SHARED.races || []) {
+    const ent = race.entrants[session.uid];
+    if (ent && !ent.finishedAt) {
+      v.raceProgress = { raceId: race.id, nextCp: ent.nextCp, total: race.checkpoints.length, startAt: ent.startAt };
+      break;
+    }
+  }
   if (!opts || opts.full !== false)
     v.mp = {
       aoiR: CFG.aoiR,
       pvpRange: CFG.pvpRange,
       emojis: EMOJIS.slice(),
       emojiTtlMs: CFG.emojiTtlMs,
-      emojiCooldownMs: CFG.emojiCooldownMs
+      emojiCooldownMs: CFG.emojiCooldownMs,
+      partyMax: CFG.partyMax,
+      teamInviteRange: CFG.teamInviteRange,
+      wreckTtlMs: CFG.wreckTtlMs,
+      raceJoinR: CFG.raceJoinR
     };
   return v;
 }
@@ -849,10 +1069,20 @@ module.exports = {
   pvpAttack,
   validateEmoji,
   addPlayerWreck,
+  cleanWrecks,
   packDiscoveries,
   normalizeDiscoveries,
   generateWorld,
   clampToWorld,
   ensureShared,
-  resetSharedForTests
+  resetSharedForTests,
+  sameTeam,
+  getTeamFor,
+  teamInvite,
+  teamAccept,
+  teamLeave,
+  teamInfo,
+  raceJoin,
+  raceTickPlayer,
+  racesNear
 };
