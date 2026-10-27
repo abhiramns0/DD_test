@@ -60,13 +60,22 @@
     return e;
   }
 
+  // Local intent for the player's boat (set by the page when the joystick moves).
+  // We simulate the boat every frame so steering feels instant; server snaps only correct gently.
+  let localIntent={mx:0,my:0};
+  let localSpeed=165; // matches Sea.CFG.speed
+  function setLocalIntent(mx,my){localIntent={mx:mx||0,my:my||0}}
+  function setLocalSpeed(sp){if(typeof sp==='number'&&sp>0)localSpeed=sp}
+
   // ---------- state intake ----------
   function setState(snap){
     if(!snap)return;
     // slim pushes leave out the static world: keep the last copy
     if(target){if(!snap.islets&&target.islets)snap.islets=target.islets;if(!snap.cfg&&target.cfg)snap.cfg=target.cfg;if(!snap.mp&&target.mp)snap.mp=target.mp}
-    target=snap;lastStateAt=performance.now()}
-  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;trails.clear()}
+    target=snap;lastStateAt=performance.now();
+    if(snap.cfg&&typeof snap.cfg.speed==='number')localSpeed=snap.cfg.speed;
+  }
+  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;trails.clear();localIntent={mx:0,my:0}}
   function showSelfEmoji(id,ttl){selfEmo={id,at:performance.now(),ttl:ttl||2500}}
   function clearSelfEmoji(){selfEmo=null}
   function pulse(){fxPulse=performance.now()}
@@ -76,22 +85,54 @@
 
   function stepEntities(dt){
     const s=target;if(!s)return;
-    // Smooth follow: higher rate + velocity extrapolation so joystick feels 1:1
-    const k=1-Math.exp(-dt*18);
+    const kEnt=1-Math.exp(-dt*16); // others / NPCs
     const age=Math.max(0,(performance.now()-lastStateAt)/1000);
-    const ex=Math.min(0.18,age); // cap prediction so we never overshoot hard
+    const ex=Math.min(0.12,age);
+
+    // --- PLAYER: local prediction driven by joystick (seamless) ---
     if(s.player){
-      if(!disp.player)disp.player={};
-      const px=(s.player.x||0)+(s.player.vx||0)*ex;
-      const py=(s.player.y||0)+(s.player.vy||0)*ex;
-      ease(disp.player,px,py,s.player.facing||0,k,220);
+      if(!disp.player){
+        disp.player={x:s.player.x||0,y:s.player.y||0,f:s.player.facing||0,vx:s.player.vx||0,vy:s.player.vy||0,init:true};
+      }
+      const p=disp.player;
+      const imx=localIntent.mx,imy=localIntent.my;
+      if(imx||imy){
+        // same accel curve as server steerNpc (dt*5.5)
+        const spd=localSpeed;
+        const wx=imx*spd,wy=imy*spd;
+        const ak=Math.min(1,dt*5.5);
+        p.vx=(p.vx||0)+(wx-(p.vx||0))*ak;
+        p.vy=(p.vy||0)+(wy-(p.vy||0))*ak;
+        p.x+=p.vx*dt;p.y+=p.vy*dt;
+        if(Math.hypot(p.vx,p.vy)>4)p.f=Math.atan2(p.vy,p.vx);
+      }else{
+        // coast / friction like server
+        p.vx=(p.vx||0)*Math.max(0,1-dt*1.8);
+        p.vy=(p.vy||0)*Math.max(0,1-dt*1.8);
+        p.x+=p.vx*dt;p.y+=p.vy*dt;
+      }
+      // Soft reconciliation toward authoritative server position (never hard-snap unless huge error)
+      const sx=(s.player.x||0)+(s.player.vx||0)*ex;
+      const sy=(s.player.y||0)+(s.player.vy||0)*ex;
+      const err=Math.hypot(sx-p.x,sy-p.y);
+      if(err>280){p.x=sx;p.y=sy;p.vx=s.player.vx||0;p.vy=s.player.vy||0;p.f=s.player.facing||0}
+      else if(err>2){
+        // blend harder when far, almost ignore when close so local feel wins
+        const corr=err>80?0.18:err>30?0.08:0.03;
+        p.x+=(sx-p.x)*corr;p.y+=(sy-p.y)*corr;
+        // gently align velocity too
+        p.vx+=( (s.player.vx||0)-p.vx )*corr*0.5;
+        p.vy+=( (s.player.vy||0)-p.vy )*corr*0.5;
+      }
+      if(s.player.facing!=null&&!(imx||imy))p.f+=angDiff(p.f,s.player.facing)*Math.min(1,dt*8);
+      p.init=true;
     }
     const seen=new Set();
     const feed=(arr,kind,idf)=>{
       for(const it of(arr||[])){
         const key=kind+':'+idf(it);seen.add(key);
         let e=disp.ents.get(key);if(!e){e={};disp.ents.set(key,e)}
-        ease(e,it.x+(it.vx||0)*ex,it.y+(it.vy||0)*ex,it.facing||0,k,400);
+        ease(e,it.x+(it.vx||0)*ex,it.y+(it.vy||0)*ex,it.facing||0,kEnt,400);
         if(kind==='other'){const em=it.emoji&&it.emoji.id?it.emoji:null; // restart the pop-in when a new emoji appears
           if(em){if(e.emoId!==em.id||e.emoUntil!==em.until){e.emoId=em.id;e.emoUntil=em.until;e.emoAt=performance.now()}}else e.emoId=null}
         e.src=it;e.kind=kind;
@@ -116,7 +157,7 @@
       arr.push({x,y,t:nowT,spd});
       while(arr.length>TRAIL_MAX||(arr.length&&nowT-arr[0].t>TRAIL_MS))arr.shift();
     };
-    if(disp.player)pushTrail('self',disp.player.x,disp.player.y,s.player&&s.player.vx,s.player&&s.player.vy);
+    if(disp.player)pushTrail('self',disp.player.x,disp.player.y,disp.player.vx,disp.player.vy);
     for(const [key,e] of disp.ents){
       if(e.kind==='npc'||e.kind==='other')pushTrail(key,e.x,e.y,e.src&&e.src.vx,e.src&&e.src.vy);
     }
@@ -282,7 +323,7 @@
         // race flag in center
         g.font=Math.round(36*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.globalAlpha=0.9;g.fillText('🏁',rp[0],rp[1]-m.c*6);g.globalAlpha=1;
-        label(g,'RACE',rp[0],rp[1]+m.c*18,Math.round(12*m.A),'#ffe9a0');
+        label(g,race.name||'RACE',rp[0],rp[1]+m.c*18,Math.round(12*m.A),'#ffe9a0');
         // checkpoints for active race
         const prog=snap.raceProgress;
         if(prog&&prog.raceId===race.id){
@@ -343,20 +384,27 @@
         g.globalAlpha=1-a*a;label(g,pp.txt,p[0],p[1]-30*m.c-a*46,Math.round(17*Math.max(.9,m.A)),'#fff3b0');g.globalAlpha=1}
 
       // home navigation: light-opacity anchor emoji pointing toward home island + distance
+      // ⚓ glyph is upright with flukes at the bottom; rotate so "down" aligns with the
+      // screen direction toward home (player -> island). The marker sits on that ray.
       if(snap.player&&!snap.nearHome&&disp.player){
         const dist=Math.hypot(disp.player.x,disp.player.y)||1;
-        const ang=Math.atan2(hp[1]-m.oy,hp[0]-m.ox);
+        const ang=Math.atan2(hp[1]-m.oy,hp[0]-m.ox); // screen angle toward home
         const onScreen=hp[0]>40&&hp[0]<m.w-40&&hp[1]>40&&hp[1]<m.h-40;
         if(!onScreen){
           const edge=Math.min(m.w,m.h)*0.36,ix=m.ox+Math.cos(ang)*edge,iy=m.oy+Math.sin(ang)*edge;
-          g.save();g.translate(ix,iy);g.rotate(ang);
+          g.save();
+          g.translate(ix,iy);
+          // rotate so the bottom of the emoji (flukes) points toward home
+          g.rotate(ang - Math.PI/2);
           g.globalAlpha=0.55;
-          g.font=Math.round(28*Math.max(0.9,m.A))+'px sans-serif';
+          g.font=Math.round(30*Math.max(0.9,m.A))+'px sans-serif';
           g.textAlign='center';g.textBaseline='middle';
           g.fillText('⚓',0,0);
           g.restore();
           g.globalAlpha=0.7;
-          label(g,Math.round(dist)+' m',ix,iy+22,11,'#e8f6ff');
+          // distance label stays upright, slightly outside the marker along the home ray
+          const lx=ix+Math.cos(ang)*18,ly=iy+Math.sin(ang)*18;
+          label(g,Math.round(dist)+' m',lx,ly,11,'#e8f6ff');
           g.globalAlpha=1;
         }
       }
@@ -397,5 +445,5 @@
     window.addEventListener('blur',()=>{_keys={};fire()});
   }
 
-  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome};
+  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome,setLocalIntent,setLocalSpeed};
 })();
