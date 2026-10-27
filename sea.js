@@ -30,8 +30,8 @@ const CFG={
   attackRange:70,
   attackDamage:12,
   attackCooldownMs:700,
-  lootRange:55,
-  collectRange:50,
+  lootRange:62,
+  collectRange:62,   // treasure / wreck loot is picked up automatically inside this range
   aoiR:1000,
   pvpRange:90,
   pvpDamage:10,
@@ -40,7 +40,11 @@ const CFG={
   emojiTtlMs:2500,
   emojiCooldownMs:1200,
   emojiMaxPerMin:12,
-  partyMax:6
+  partyMax:6,
+  regenSeconds:30,        // boat health refills from 0 to full in this many seconds (at sea, docked or on the island screen)
+  seaCooldownMs:30000,    // wait after 'Leave Sea' (or being sunk) before sailing out again. Docking at home has NO cooldown.
+  intentStaleMs:1500,     // steering is cancelled if the client stops refreshing it (lost signal / locked phone)
+  viewR:1000              // entities further than this from the player are not sent
 };
 
 const EMOJIS=['👋','😂','⚠️','⚔️','🤝','⛵','💎','🆘','👍','❤️'];
@@ -105,21 +109,25 @@ function spawnWildlife(seed,count){
       facing:0,hp:CFG.wildHp,maxHp:CFG.wildHp,alive:true,loot:0,aggro:type==='croc'})}
   return out}
 
-function createSession(uid,voyage,savedDiscoveries){
+function createSession(uid,voyage,savedDiscoveries,opts){
   const worldSeed=String(uid)+':world';
   const world=generateWorld(worldSeed);
   const disc=normalizeDiscoveries(savedDiscoveries);
-  for(const t of world.treasures)if(disc.treasures.includes(t.id))t.collected=true;else t.collected=false;
+  // The gem TOTAL (disc.treasureCount) accumulates forever. The crates themselves refill at the start of each voyage,
+  // so there is always something to collect; ids collected during THIS voyage are tracked in disc.treasures.
+  disc.treasures=[];
+  for(const t of world.treasures)t.collected=false;
   for(const it of world.islets)it.explored=disc.islets.includes(it.id);
   const spawnA=Math.PI*0.25;
+  const startHp=opts&&typeof opts.hp==='number'&&isFinite(opts.hp)?Math.max(1,Math.min(CFG.playerHp,opts.hp)):CFG.playerHp;
   const px=Math.cos(spawnA)*CFG.leaveR, py=Math.sin(spawnA)*CFG.leaveR;
   return{
     uid,voyage,seed:worldSeed,startedAt:Date.now(),
-    player:{x:px,y:py,vx:0,vy:0,facing:spawnA,hp:CFG.playerHp,maxHp:CFG.playerHp,alive:true,attackAt:0,pvpAt:0,vessel:'raft'},
+    player:{x:px,y:py,vx:0,vy:0,facing:spawnA,hp:startHp,maxHp:CFG.playerHp,alive:true,attackAt:0,pvpAt:0,vessel:'raft'},
     islets:world.islets,treasures:world.treasures,
     npcs:spawnNpcs(String(uid)+':npc:v'+voyage,CFG.npcBoats),
     wildlife:spawnWildlife(String(uid)+':wild:v'+voyage,CFG.wildlife),
-    intent:{mx:0,my:0},events:[],discoveries:disc,status:'sailing'}}
+    intent:{mx:0,my:0},intentAt:0,staleIntent:false,dirty:false,events:[],discoveries:disc,status:'sailing'}}
 
 function normalizeDiscoveries(raw){
   const out={islets:[],treasures:[],voyages:0,treasureCount:0};
@@ -134,8 +142,9 @@ function packDiscoveries(session){
   return{islets:session.discoveries.islets.slice(),treasures:session.discoveries.treasures.slice(),
     voyages:session.discoveries.voyages,treasureCount:session.discoveries.treasureCount}}
 
-function setIntent(session,mx,my){
+function setIntent(session,mx,my,now){
   if(!session||session.status!=='sailing')return;
+  session.intentAt=now||Date.now();
   const m=Math.hypot(mx,my);
   if(m<0.05){session.intent.mx=0;session.intent.my=0;return}
   session.intent.mx=mx/m;session.intent.my=my/m}
@@ -161,6 +170,9 @@ function tick(session,dt,now){
   if(!session||session.status!=='sailing')return session;
   dt=Math.max(0.01,Math.min(0.1,dt));
   const p=session.player;if(!p.alive)return session;
+  now=now||Date.now();
+  if(session.staleIntent&&(session.intent.mx||session.intent.my)&&now-session.intentAt>CFG.intentStaleMs){session.intent.mx=0;session.intent.my=0} // no refresh from the client: stop the boat
+  if(p.hp<p.maxHp)p.hp=Math.min(p.maxHp,p.hp+dt*p.maxHp/CFG.regenSeconds); // slow health regeneration
   if(session.intent.mx||session.intent.my){
     steerNpc(p,p.x+session.intent.mx*200,p.y+session.intent.my*200,CFG.speed,dt);
   }else{
@@ -178,11 +190,17 @@ function tick(session,dt,now){
   for(const it of session.islets){
     if(it.explored)continue;
     if(Math.hypot(it.x-p.x,it.y-p.y)<it.r+30){
-      it.explored=true;
+      it.explored=true;session.dirty=true;
       if(!session.discoveries.islets.includes(it.id))session.discoveries.islets.push(it.id);
       session.events.push({t:'explore',id:it.id,name:it.name,at:now})}}
+  autoCollect(session,now);
   session.nearHome=Math.hypot(p.x,p.y)<=CFG.returnR;
   return session}
+
+// Treasure and wreck loot are collected automatically when the boat gets close (server-authoritative).
+function autoCollect(session,now){
+  for(let i=0;i<6;i++){const r=collectTreasure(session,now);if(!(r.ok||r.err==='already'))break}
+  for(let i=0;i<4;i++){const r=loot(session,now);if(!r.ok)break}}
 
 function attack(session,now){
   if(!session||session.status!=='sailing')return{ok:false,err:'not_sailing'};
@@ -209,6 +227,7 @@ function loot(session,now){
     const d=Math.hypot(n.x-p.x,n.y-p.y);if(d<bd){bd=d;best=n}}
   if(!best)return{ok:false,err:'nothing'};
   const gained=best.loot;best.loot=0;
+  session.discoveries.treasureCount+=gained|0;session.dirty=true;
   session.events.push({t:'loot',id:best.id,gained,at:now});
   return{ok:true,gained,id:best.id}}
 
@@ -223,7 +242,7 @@ function collectTreasure(session,now){
   if(session.discoveries.treasures.includes(best.id)){best.collected=true;return{ok:false,err:'already'}}
   best.collected=true;
   session.discoveries.treasures.push(best.id);
-  session.discoveries.treasureCount+=best.value|1;
+  session.discoveries.treasureCount+=(best.value|0)||1;session.dirty=true;
   session.events.push({t:'treasure',id:best.id,kind:best.kind,value:best.value,at:now});
   return{ok:true,id:best.id,kind:best.kind,value:best.value}}
 
@@ -233,21 +252,30 @@ function returnHome(session){
   session.discoveries.voyages=(session.discoveries.voyages|0)+1;
   return{ok:true,nearHome:!!session.nearHome,discoveries:packDiscoveries(session)}}
 
-function view(session){
+const r1=n=>Math.round(n*10)/10,r2=n=>Math.round(n*100)/100;
+
+// opts.full !== false -> also includes the static world (islets, cfg, mp). Deltas leave those out (the client keeps them).
+function view(session,opts){
   if(!session)return null;
+  const full=!opts||opts.full!==false;
   const drain=session.events.splice(0,session.events.length);
-  return{
+  const p=session.player,R=CFG.viewR,near=e=>Math.abs(e.x-p.x)<=R&&Math.abs(e.y-p.y)<=R;
+  const v={
+    proto:(opts&&opts.proto)||1,
     status:session.status,nearHome:!!session.nearHome,
-    cfg:{worldR:CFG.worldR,homeR:CFG.homeR,returnR:CFG.returnR,attackRange:CFG.attackRange},
-    player:{x:session.player.x,y:session.player.y,facing:session.player.facing,
-      hp:session.player.hp,maxHp:session.player.maxHp,vessel:session.player.vessel,alive:session.player.alive},
-    islets:session.islets.map(i=>({id:i.id,x:i.x,y:i.y,r:i.r,name:i.name,explored:!!i.explored})),
-    treasures:session.treasures.filter(t=>!t.collected).map(t=>({id:t.id,x:t.x,y:t.y,kind:t.kind})),
-    npcs:session.npcs.filter(n=>n.alive).map(n=>({id:n.id,x:n.x,y:n.y,facing:n.facing,kind:n.kind,hp:n.hp,maxHp:n.maxHp})),
-    wildlife:session.wildlife.filter(w=>w.alive).map(w=>({id:w.id,x:w.x,y:w.y,facing:w.facing,kind:w.kind})),
-    wrecks:session.npcs.filter(n=>!n.alive).map(n=>({id:n.id,x:n.x,y:n.y,loot:n.loot|0})),
+    player:{x:r1(p.x),y:r1(p.y),vx:r1(p.vx||0),vy:r1(p.vy||0),facing:r2(p.facing||0),
+      hp:r1(p.hp),maxHp:p.maxHp,vessel:p.vessel,alive:p.alive},
+    treasures:session.treasures.filter(t=>!t.collected&&near(t)).map(t=>({id:t.id,x:r1(t.x),y:r1(t.y),kind:t.kind})),
+    npcs:session.npcs.filter(n=>n.alive&&near(n)).map(n=>({id:n.id,x:r1(n.x),y:r1(n.y),vx:r1(n.vx||0),vy:r1(n.vy||0),facing:r2(n.facing||0),kind:n.kind,hp:n.hp,maxHp:n.maxHp})),
+    wildlife:session.wildlife.filter(w=>w.alive&&near(w)).map(w=>({id:w.id,x:r1(w.x),y:r1(w.y),vx:r1(w.vx||0),vy:r1(w.vy||0),facing:r2(w.facing||0),kind:w.kind})),
+    wrecks:session.npcs.filter(n=>!n.alive&&near(n)).map(n=>({id:n.id,x:r1(n.x),y:r1(n.y),loot:n.loot|0})),
     events:drain,
-    discoveries:{islets:session.discoveries.islets.length,treasures:session.discoveries.treasureCount,voyages:session.discoveries.voyages}}}
+    discoveries:{islets:session.discoveries.islets.length,treasures:session.discoveries.treasureCount,voyages:session.discoveries.voyages}};
+  if(full){
+    v.cfg={worldR:CFG.worldR,homeR:CFG.homeR,returnR:CFG.returnR,attackRange:CFG.attackRange,attackCooldownMs:CFG.attackCooldownMs,
+      pvpCooldownMs:CFG.pvpCooldownMs,pvpRange:CFG.pvpRange,regenSeconds:CFG.regenSeconds,seaCooldownMs:CFG.seaCooldownMs};
+    v.islets=session.islets.map(i=>({id:i.id,x:i.x,y:i.y,r:i.r,name:i.name,explored:!!i.explored}))}
+  return v}
 
 function othersView(selfUid,selfX,selfY,voyagerList,now){
   const out=[];
@@ -257,8 +285,8 @@ function othersView(selfUid,selfX,selfY,voyagerList,now){
     if(d>CFG.aoiR)continue;
     const bubble=(v.emoji&&v.emojiUntil&&now<v.emojiUntil)?{id:v.emoji,until:v.emojiUntil}:null;
     out.push({uid:v.uid,name:String(v.name||'Sailor').slice(0,14),
-      x:v.player.x,y:v.player.y,facing:v.player.facing||0,
-      hp:v.player.hp,maxHp:v.player.maxHp||CFG.playerHp,clanId:v.clanId||null,emoji:bubble,dist:Math.round(d)})}
+      x:r1(v.player.x),y:r1(v.player.y),vx:r1(v.player.vx||0),vy:r1(v.player.vy||0),facing:r2(v.player.facing||0),
+      hp:r1(v.player.hp),maxHp:v.player.maxHp||CFG.playerHp,clanId:v.clanId||null,emoji:bubble,dist:Math.round(d)})}
   out.sort((a,b)=>a.dist-b.dist);
   return out.slice(0,24)}
 
@@ -288,10 +316,10 @@ function validateEmoji(id,now,meta){
   meta.lastAt=now;meta.countInWindow++;
   return{ok:true,meta,ttl:CFG.emojiTtlMs}}
 
-function viewWithOthers(session,others,now){
-  const v=view(session);if(!v)return null;
+function viewWithOthers(session,others,now,opts){
+  const v=view(session,opts);if(!v)return null;
   v.others=others||[];
-  v.mp={aoiR:CFG.aoiR,pvpRange:CFG.pvpRange,emojis:EMOJIS.slice()};
+  if(!opts||opts.full!==false)v.mp={aoiR:CFG.aoiR,pvpRange:CFG.pvpRange,emojis:EMOJIS.slice(),emojiTtlMs:CFG.emojiTtlMs,emojiCooldownMs:CFG.emojiCooldownMs};
   return v}
 
 module.exports={CFG,EMOJIS,createSession,setIntent,tick,attack,loot,collectTreasure,returnHome,view,
