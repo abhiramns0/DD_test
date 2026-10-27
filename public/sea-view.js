@@ -24,6 +24,10 @@
   let disp={player:null,ents:new Map()};  // eased (drawn) positions
   let raf=0,lastT=0,canvasRef=null,onFrame=null,lastStateAt=0;
   let _keys={};
+  let selfEmo=null;                       // {id,at,ttl}: the emoji bubble on MY boat (set locally the moment it is sent)
+  let fxPulse=0;                          // performance.now() of the last attack pulse
+  let popups=[];                          // floating '+1 💎' texts: {x,y,txt,t0}
+  let homeScr=null;                       // where the home island is on screen right now (for the floating DOCK button)
 
   // ---------- projection ----------
   function metrics(canvas){
@@ -54,23 +58,35 @@
   }
 
   // ---------- state intake ----------
-  function setState(snap){if(!snap)return;target=snap;lastStateAt=performance.now()}
-  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0}
+  function setState(snap){
+    if(!snap)return;
+    // slim pushes leave out the static world: keep the last copy
+    if(target){if(!snap.islets&&target.islets)snap.islets=target.islets;if(!snap.cfg&&target.cfg)snap.cfg=target.cfg;if(!snap.mp&&target.mp)snap.mp=target.mp}
+    target=snap;lastStateAt=performance.now()}
+  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null}
+  function showSelfEmoji(id,ttl){selfEmo={id,at:performance.now(),ttl:ttl||2500}}
+  function clearSelfEmoji(){selfEmo=null}
+  function pulse(){fxPulse=performance.now()}
+  function popup(txt){const p=disp.player||(target&&target.player);if(!p)return;popups.push({x:p.x,y:p.y,txt,t0:performance.now()});if(popups.length>8)popups.shift()}
+  function getHome(){return homeScr}
   function stateAge(){return lastStateAt?performance.now()-lastStateAt:Infinity}
 
   function stepEntities(dt){
     const s=target;if(!s)return;
     const k=1-Math.exp(-dt*14);
+    const ex=Math.min(0.25,Math.max(0,(performance.now()-lastStateAt)/1000)); // seconds since this snapshot arrived
     if(s.player){
       if(!disp.player)disp.player={};
-      ease(disp.player,s.player.x||0,s.player.y||0,s.player.facing||0,k,400);
+      ease(disp.player,(s.player.x||0)+(s.player.vx||0)*ex,(s.player.y||0)+(s.player.vy||0)*ex,s.player.facing||0,k,400);
     }
     const seen=new Set();
     const feed=(arr,kind,idf)=>{
       for(const it of(arr||[])){
         const key=kind+':'+idf(it);seen.add(key);
         let e=disp.ents.get(key);if(!e){e={};disp.ents.set(key,e)}
-        ease(e,it.x,it.y,it.facing||0,k,400);
+        ease(e,it.x+(it.vx||0)*ex,it.y+(it.vy||0)*ex,it.facing||0,k,400);
+        if(kind==='other'){const em=it.emoji&&it.emoji.id?it.emoji:null; // restart the pop-in when a new emoji appears
+          if(em){if(e.emoId!==em.id||e.emoUntil!==em.until){e.emoId=em.id;e.emoUntil=em.until;e.emoAt=performance.now()}}else e.emoId=null}
         e.src=it;e.kind=kind;
       }
     };
@@ -134,6 +150,19 @@
     g.fillStyle=color||'#fff';g.fillText(txt,x,y);
   }
 
+  function bubble(g,m,x,y,txt,age,ttl){ // emoji speech bubble above a boat: pops in, bobs, fades out
+    const a=Math.min(1,age/160),sc=0.35+0.65*(1+2.70158*Math.pow(a-1,3)+1.70158*Math.pow(a-1,2)); // ease-out-back
+    const fade=age>ttl-450?Math.max(0,(ttl-age)/450):1;
+    if(fade<=0)return;
+    const size=Math.round(26*Math.max(.9,m.A)),r=size*0.82,bob=Math.sin(age/260)*2;
+    g.save();g.globalAlpha=fade;g.translate(x,y+bob);g.scale(sc,sc);
+    g.fillStyle='rgba(255,255,255,.97)';g.strokeStyle='rgba(39,64,90,.4)';g.lineWidth=2;
+    g.beginPath();g.arc(0,-r-6,r,0,6.283);g.fill();g.stroke();
+    g.beginPath();g.moveTo(-7,-r*0.25);g.lineTo(0,5);g.lineTo(7,-r*0.25);g.closePath();g.fill();
+    g.font=size+'px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillStyle='#000';g.fillText(txt,0,-r-4);
+    g.restore();
+  }
+
   function water(g,m,t){
     const grd=g.createRadialGradient(m.ox,m.oy,0,m.ox,m.oy,Math.max(m.w,m.h)*0.85);
     grd.addColorStop(0,COL.lite);grd.addColorStop(0.55,COL.mid);grd.addColorStop(1,COL.deep);
@@ -160,7 +189,7 @@
       const m=metrics(canvas);
       const st=canvas.style;
       st.position='absolute';st.left='0';st.top='0';st.right='0';st.bottom='0';
-      st.width='100%';st.height='100%';st.zIndex='1';st.display='block';st.pointerEvents='auto';
+      st.width='100%';st.height='100%';st.zIndex='1';st.display='block';st.pointerEvents='none';
       const dpr=Math.min(2,window.devicePixelRatio||1);
       const bw=Math.max(1,Math.round(m.w*dpr)),bh=Math.max(1,Math.round(m.h*dpr));
       if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh}
@@ -183,9 +212,10 @@
       g.textAlign='center';g.textBaseline='middle';
       g.font=Math.round(34*m.c)+'px sans-serif';g.fillStyle='#000';g.fillText('🏝️',hp[0],hp[1]-m.c*14);
       label(g,'HOME',hp[0],hp[1]+hry*0.35,Math.round(13*m.A),'#fff');
+      homeScr={x:hp[0],y:hp[1]-m.c*38,w:m.w,h:m.h};
 
       // entities, painter-sorted back to front (iso depth = x+y)
-      const list=[],fs=Math.round(12*Math.max(.9,m.A));
+      const list=[],bubbles=[],nowMs=performance.now(),fs=Math.round(12*Math.max(.9,m.A));
       for(const tr of(snap.treasures||[]))list.push({d:tr.x+tr.y,f:()=>{
         const p=P(tr.x,tr.y,m);g.font=Math.round(24*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.fillText(tr.kind==='chest'?'💎':'📦',p[0],p[1]+Math.sin(t*2+tr.x)*m.c*2)}});
@@ -198,16 +228,23 @@
         else list.push({d:e.x+e.y,f:()=>{
           const r=drawBoat(g,m,e,false);
           label(g,src.name||'Sailor',r.x,r.top-8,fs,'#fff');
-          if(src.emoji&&src.emoji.id){g.font=Math.round(24*Math.max(.9,m.A))+'px sans-serif';g.textAlign='center';g.fillText(src.emoji.id,r.x,r.top-26)}}});
+          if(e.emoId)bubbles.push({x:r.x,y:r.top-24,id:e.emoId,age:nowMs-(e.emoAt||nowMs),ttl:2500})}});
       }
       if(disp.player&&snap.player)list.push({d:disp.player.x+disp.player.y+0.01,f:()=>{
         const r=drawBoat(g,m,disp.player,true);
         label(g,'YOU',r.x,r.top-14,fs,'#ffe9a0');
+        if(fxPulse){const pa=(nowMs-fxPulse)/280;if(pa<1){const rr=((snap.cfg&&snap.cfg.attackRange)||70)*pa,[prx,pry]=ER(rr,m);
+          g.strokeStyle='rgba(255,255,255,'+(0.85*(1-pa)).toFixed(2)+')';g.lineWidth=Math.max(2,m.c*3*(1-pa));g.beginPath();g.ellipse(r.x,r.y,prx,pry,0,0,6.283);g.stroke()}}
+        if(selfEmo){const age=nowMs-selfEmo.at;if(age<selfEmo.ttl)bubbles.push({x:r.x,y:r.top-44,id:selfEmo.id,age,ttl:selfEmo.ttl});else selfEmo=null}
         const pct=Math.max(0,Math.min(1,(snap.player.hp||100)/Math.max(1,snap.player.maxHp||100)));
         g.fillStyle='rgba(0,0,0,.45)';g.fillRect(r.x-22,r.top-10,44,5);
         g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(r.x-22,r.top-10,44*pct,5)}});
       list.sort((a,b)=>a.d-b.d);
       for(const it of list)it.f();
+      for(const b of bubbles)bubble(g,m,b.x,b.y,b.id,b.age,b.ttl);          // bubbles above every boat
+      popups=popups.filter(pp=>nowMs-pp.t0<1000);                           // floating pickup texts
+      for(const pp of popups){const a=(nowMs-pp.t0)/1000,p=P(pp.x,pp.y,m);
+        g.globalAlpha=1-a*a;label(g,pp.txt,p[0],p[1]-30*m.c-a*46,Math.round(17*Math.max(.9,m.A)),'#fff3b0');g.globalAlpha=1}
 
       // arrow pointing home when it is off screen
       if(snap.player&&!snap.nearHome&&disp.player){
@@ -258,5 +295,5 @@
     window.addEventListener('blur',()=>{_keys={};fire()});
   }
 
-  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld};
+  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome};
 })();
