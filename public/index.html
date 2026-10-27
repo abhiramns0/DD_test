@@ -97,6 +97,16 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 /* emoji button + radial menu */
 #sea button.sbtn#seaEmoBtn{position:absolute;z-index:4;left:calc(env(safe-area-inset-left,0px) + 18px);bottom:calc(env(safe-area-inset-bottom,0px) + 40px);width:62px;height:62px;border-radius:50%;font-size:30px;background:linear-gradient(#fff,#e3f3fa);box-shadow:0 4px 0 #9fc3d6,0 0 0 3px rgba(255,255,255,.55)}
 #sea button.sbtn#seaEmoBtn:active{transform:translateY(2px);box-shadow:0 2px 0 #9fc3d6,0 0 0 3px rgba(255,255,255,.55)}
+/* team invite / race join floating buttons */
+#seaTeamFloater,#seaRaceFloater{position:absolute;z-index:6;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 170px);display:none;flex-direction:column;gap:8px;align-items:center;pointer-events:auto}
+#seaTeamFloater button,#seaRaceFloater button{margin:0;border:0;cursor:pointer;border-radius:999px;padding:10px 18px;font-weight:800;font-size:14px;color:#fff;background:linear-gradient(#3a9ad9,#1e6fa8);box-shadow:0 4px 0 #124a72,0 0 0 2px rgba(255,255,255,.5);white-space:nowrap}
+#seaTeamFloater button.accept{background:linear-gradient(#45dcaa,#1fae8c);box-shadow:0 4px 0 #12806a,0 0 0 2px rgba(255,255,255,.5)}
+#seaRaceFloater button{background:linear-gradient(#f0b429,#d4890a);box-shadow:0 4px 0 #a06408,0 0 0 2px rgba(255,255,255,.55)}
+#seaTeamBar{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 52px);left:50%;transform:translateX(-50%);display:none;background:rgba(10,40,60,.72);color:#fff;border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;letter-spacing:.3px;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+#seaRaceHud{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 82px);left:50%;transform:translateX(-50%);display:none;background:rgba(80,50,10,.78);color:#ffe9a0;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center;min-width:140px}
+#seaRaceBoard{position:absolute;z-index:5;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 56px);display:none;background:rgba(10,30,45,.8);color:#fff;border-radius:12px;padding:8px 10px;font-size:11px;min-width:120px;max-width:160px}
+#seaRaceBoard b{display:block;margin-bottom:4px;color:#ffd24a}
+
 #seaEmoRing{position:absolute;inset:0;z-index:6;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
 #seaEmoRing.open{display:block}
 #seaEmoShade{position:absolute;inset:0;background:radial-gradient(circle at var(--cx,50%) var(--cy,50%),rgba(8,32,48,.12),rgba(8,32,48,.58))}
@@ -356,6 +366,13 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
   <!-- emoji radial menu -->
   <div id="seaEmoRing"><div id="seaEmoShade"></div><div id="seaEmoItems"></div><div id="seaEmoHub">😊</div></div>
+
+  <!-- teaming + racing UI -->
+  <div id="seaTeamBar"></div>
+  <div id="seaRaceHud"></div>
+  <div id="seaRaceBoard"></div>
+  <div id="seaTeamFloater"></div>
+  <div id="seaRaceFloater"></div>
 </div>
  
  <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
@@ -374,7 +391,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=10"></script>
+ <script src="/sea-view.js?v=12"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1709,7 +1726,7 @@ window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen=
 
 // ---- Open Sea (exploration + multiplayer encounters) ----
 // Controls: joystick (bottom centre) · attack (bottom right) · emoji ring (bottom left) · ⚓ Leave (top right) · DOCK floats over the home island.
-const SEA_PROTO=2; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
+const SEA_PROTO=3; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
 let SEA=null,seaIntent={mx:0,my:0},seaLeaving=false;
 const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
 const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView)SeaView.draw(cv,null)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}}; // redraw only (never touches the snapshot age)
@@ -1760,7 +1777,76 @@ function seaHandleEvents(evs){
     else if(e.t==='croc_sink'||e.t==='npc_sink')toast('💥 Boat destroyed!');
     else if(e.t==='hit')svx('popup','💥');
     else if(e.t==='miss')svx('popup','💨');
+    else if(e.t==='race_cp')toast('🏁 Checkpoint '+e.cp);
+    else if(e.t==='race_finish')toast('🏆 Finished #'+e.place+' — '+(e.ms/1000).toFixed(1)+'s');
   });
+}
+function seaUpdateTeamRaceUI(){
+  if(!SEA)return;
+  const bar=$('seaTeamBar'),tf=$('seaTeamFloater');
+  if(bar){
+    if(SEA.team&&SEA.team.members&&SEA.team.members.length){
+      const names=SEA.team.members.map(m=>(m.leader?'👑 ':'')+(m.name||'?')).join(' · ');
+      bar.style.display='block';bar.textContent='👥 '+names;
+    }else bar.style.display='none';
+  }
+  if(tf){
+    tf.innerHTML='';tf.style.display='none';
+    if(SEA.teamInvite){
+      tf.style.display='flex';
+      const b=document.createElement('button');b.className='accept';
+      b.textContent='✅ Team with '+(SEA.teamInvite.name||'Sailor');
+      b.onclick=async()=>{const r=await emitP('sea:team',{op:'accept',teamId:SEA.teamInvite.teamId},2000);if(r&&r.sea)applySea(r.sea);if(r&&r.ok)toast('Joined team!');else if(r&&r.err)toast('Team: '+r.err)};
+      tf.appendChild(b);
+    }else if(SEA.others&&SEA.others.length){
+      const range=(SEA.mp&&SEA.mp.teamInviteRange)||160;
+      const near=SEA.others.find(o=>o.dist<=range);
+      const myId=typeof UID!=='undefined'?UID:'';
+      const canInvite=!SEA.team||(SEA.team.leader===myId);
+      if(near&&canInvite){
+        const teammate=SEA.team&&SEA.team.members&&SEA.team.members.some(m=>m.uid===near.uid);
+        if(!teammate){
+          tf.style.display='flex';
+          const b=document.createElement('button');
+          b.textContent='🤝 Team up with '+(near.name||'Sailor');
+          b.onclick=async()=>{const r=await emitP('sea:team',{op:'invite',toUid:near.uid},2000);if(r&&r.ok)toast('Invite sent');else if(r&&r.err)toast('Invite: '+r.err)};
+          tf.appendChild(b);
+        }
+      }
+    }
+  }
+  const rf=$('seaRaceFloater'),rh=$('seaRaceHud'),rb=$('seaRaceBoard');
+  if(rf){
+    rf.innerHTML='';rf.style.display='none';
+    if(!SEA.raceProgress&&SEA.races&&SEA.races.length){
+      const me=SEA.player;if(me){
+        const joinR=(SEA.mp&&SEA.mp.raceJoinR)||200;
+        const near=SEA.races.find(r=>Math.hypot((r.x||0)-(me.x||0),(r.y||0)-(me.y||0))<=joinR);
+        if(near){
+          rf.style.display='flex';
+          const b=document.createElement('button');
+          b.textContent='🏁 Enter Race';
+          b.onclick=async()=>{const r=await emitP('sea:race',{op:'join',raceId:near.id},2000);if(r&&r.sea)applySea(r.sea);if(r&&r.ok)toast('Race started!');else if(r&&r.err)toast('Race: '+r.err)};
+          rf.appendChild(b);
+        }
+      }
+    }
+  }
+  if(rh){
+    if(SEA.raceProgress){
+      const pr=SEA.raceProgress,elapsed=((Date.now()-(pr.startAt||Date.now()))/1000).toFixed(1);
+      rh.style.display='block';
+      rh.textContent='🏁 CP '+(pr.nextCp||0)+'/'+(pr.total||0)+' · '+elapsed+'s';
+    }else rh.style.display='none';
+  }
+  if(rb){
+    let board=null;
+    if(SEA.races){for(const r of SEA.races)if(r.board&&r.board.length){board=r.board;break}}
+    if(board&&board.length){
+      rb.style.display='block';
+      rb.innerHTML='<b>🏁 Leaderboard</b>'+board.slice(0,8).map((row,i)=>'<div>'+(i+1)+'. '+(row.name||'?')+' — '+(row.ms/1000).toFixed(1)+'s</div>').join('');
+    }else rb.style.display='none';
+  }
 }
 
 // ---- state intake ----
@@ -1778,7 +1864,7 @@ function applySea(sea){
   if(SEA){if(!sea.islets&&SEA.islets)sea.islets=SEA.islets;if(!sea.cfg&&SEA.cfg)sea.cfg=SEA.cfg;if(!sea.mp&&SEA.mp)sea.mp=SEA.mp} // deltas leave out the static world
   SEA=sea;seaFails=0;seaStall=0;
   try{SeaView.setState(sea)}catch(e){}
-  seaHandleEvents(sea.events);seaUpdateHud();
+  seaHandleEvents(sea.events);seaUpdateHud();seaUpdateTeamRaceUI();
 }
 async function seaWatchdog(force){
   if(!seaOpen()||seaWatchBusy||seaLeaving)return;
@@ -1801,7 +1887,7 @@ function startSeaLoop(){
   stopSeaLoop();
   try{SeaView.start($('seaCv'),seaFrame)}catch(e){}
   seaWatch=setInterval(()=>seaWatchdog(false),1000);
-  seaBeat=setInterval(()=>{if(seaOpen()&&(seaIntent.mx||seaIntent.my))seaEmitIntent()},300); // steering heartbeat: the server stops a boat whose input goes silent
+  seaBeat=setInterval(()=>{if(seaOpen()&&(seaIntent.mx||seaIntent.my))seaEmitIntent()},120); // steering heartbeat: the server stops a boat whose input goes silent
 }
 function stopSeaLoop(){
   if(seaWatch){clearInterval(seaWatch);seaWatch=0}
@@ -1821,7 +1907,7 @@ function seaSendIntent(mx,my){
   seaIntent={mx,my};
   if(!seaOpen())return;
   const now=performance.now(),moving=!!(mx||my);
-  if(moving&&now-seaSentAt<50&&Math.hypot(mx-seaSentI.mx,my-seaSentI.my)<0.1)return; // throttle
+  if(moving&&now-seaSentAt<33&&Math.hypot(mx-seaSentI.mx,my-seaSentI.my)<0.08)return; // throttle
   if(mx===seaSentI.mx&&my===seaSentI.my&&now-seaSentAt<400)return;
   seaEmitIntent();
 }
@@ -1965,7 +2051,7 @@ async function seaFire(){
   const btn=$('seaAttack'),now=performance.now();
   if(now<seaAtkReady){btn.classList.remove('shake');void btn.offsetWidth;btn.classList.add('shake');return} // still reloading
   let targetUid=null;
-  if(SEA.others&&SEA.others.length){const range=(SEA.mp&&SEA.mp.pvpRange)||90,near=SEA.others.find(o=>o.dist<=range);if(near)targetUid=near.uid}
+  if(SEA.others&&SEA.others.length){const range=(SEA.mp&&SEA.mp.pvpRange)||90;const teammates=new Set((SEA.team&&SEA.team.members||[]).map(m=>m.uid));const near=SEA.others.find(o=>o.dist<=range&&!teammates.has(o.uid));if(near)targetUid=near.uid}
   const cfg=SEA.cfg||{};
   seaAtkCd=targetUid?(cfg.pvpCooldownMs||900):(cfg.attackCooldownMs||700);
   seaAtkReady=now+seaAtkCd; // optimistic reload; undone below if the server did not fire
@@ -2045,6 +2131,12 @@ let seaCloseEmo=()=>{};
 
 // ---- server events ----
 socket.on('sea:state',d=>{if(d&&seaOpen()&&!seaLeaving)applySea(d)});
+socket.on('sea:team',d=>{
+  if(!d||!seaOpen())return;
+  if(d.op==='invite')toast('🤝 '+(d.name||'Sailor')+' invited you to team — accept nearby');
+  else if(d.op==='joined')toast('👥 '+(d.name||'Sailor')+' joined the team');
+  else if(d.op==='left')toast('👤 Sailor left the team');
+});
 socket.on('connect',()=>{if(seaOpen())setTimeout(()=>seaWatchdog(true),400)}); // re-attach the voyage to the new socket right after a reconnect
 window.addEventListener('online',()=>{if(seaOpen())seaWatchdog(true)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&seaOpen()){seaSendIntent(0,0);setTimeout(()=>seaWatchdog(true),200)}});
