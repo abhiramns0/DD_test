@@ -391,7 +391,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=12"></script>
+ <script src="/sea-view.js?v=13"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1726,7 +1726,7 @@ window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen=
 
 // ---- Open Sea (exploration + multiplayer encounters) ----
 // Controls: joystick (bottom centre) · attack (bottom right) · emoji ring (bottom left) · ⚓ Leave (top right) · DOCK floats over the home island.
-const SEA_PROTO=3; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
+const SEA_PROTO=4; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
 let SEA=null,seaIntent={mx:0,my:0},seaLeaving=false;
 const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
 const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView)SeaView.draw(cv,null)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}}; // redraw only (never touches the snapshot age)
@@ -1787,8 +1787,11 @@ function seaUpdateTeamRaceUI(){
   if(bar){
     if(SEA.team&&SEA.team.members&&SEA.team.members.length){
       const names=SEA.team.members.map(m=>(m.leader?'👑 ':'')+(m.name||'?')).join(' · ');
-      bar.style.display='block';bar.textContent='👥 '+names;
-    }else bar.style.display='none';
+      bar.style.display='flex';bar.style.alignItems='center';bar.style.gap='8px';
+      bar.innerHTML='<span>👥 '+names+'</span><button type="button" id="seaTeamLeaveBtn" style="margin:0;border:0;cursor:pointer;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800;color:#fff;background:#c0392b">Leave</button>';
+      const lb=$('seaTeamLeaveBtn');
+      if(lb)lb.onclick=async()=>{const r=await emitP('sea:team',{op:'leave'},2000);if(r&&r.sea)applySea(r.sea);if(r&&r.ok)toast('Left team');else if(r&&r.err)toast('Team: '+r.err)};
+    }else{bar.style.display='none';bar.innerHTML=''}
   }
   if(tf){
     tf.innerHTML='';tf.style.display='none';
@@ -1797,7 +1800,12 @@ function seaUpdateTeamRaceUI(){
       const b=document.createElement('button');b.className='accept';
       b.textContent='✅ Team with '+(SEA.teamInvite.name||'Sailor');
       b.onclick=async()=>{const r=await emitP('sea:team',{op:'accept',teamId:SEA.teamInvite.teamId},2000);if(r&&r.sea)applySea(r.sea);if(r&&r.ok)toast('Joined team!');else if(r&&r.err)toast('Team: '+r.err)};
-      tf.appendChild(b);
+      const d=document.createElement('button');
+      d.textContent='✕ Decline';
+      d.style.background='linear-gradient(#c0392b,#8e2a20)';
+      d.style.boxShadow='0 4px 0 #5c1a14,0 0 0 2px rgba(255,255,255,.4)';
+      d.onclick=async()=>{const r=await emitP('sea:team',{op:'decline',teamId:SEA.teamInvite.teamId},2000);if(r&&r.sea)applySea(r.sea);if(r&&r.ok)toast('Invite declined');};
+      tf.appendChild(b);tf.appendChild(d);
     }else if(SEA.others&&SEA.others.length){
       const range=(SEA.mp&&SEA.mp.teamInviteRange)||160;
       const near=SEA.others.find(o=>o.dist<=range);
@@ -1825,7 +1833,7 @@ function seaUpdateTeamRaceUI(){
         if(near){
           rf.style.display='flex';
           const b=document.createElement('button');
-          b.textContent='🏁 Enter Race';
+          b.textContent='🏁 Enter '+(near.name||'Race');
           b.onclick=async()=>{const r=await emitP('sea:race',{op:'join',raceId:near.id},2000);if(r&&r.sea)applySea(r.sea);if(r&&r.ok)toast('Race started!');else if(r&&r.err)toast('Race: '+r.err)};
           rf.appendChild(b);
         }
@@ -1835,19 +1843,25 @@ function seaUpdateTeamRaceUI(){
   if(rh){
     if(SEA.raceProgress){
       const pr=SEA.raceProgress,elapsed=((Date.now()-(pr.startAt||Date.now()))/1000).toFixed(1);
+      const raceName=(SEA.races||[]).find(r=>r.id===pr.raceId);
       rh.style.display='block';
-      rh.textContent='🏁 CP '+(pr.nextCp||0)+'/'+(pr.total||0)+' · '+elapsed+'s';
+      rh.textContent='🏁 '+(raceName&&raceName.name?raceName.name+' · ':'')+'CP '+(pr.nextCp||0)+'/'+(pr.total||0)+' · '+elapsed+'s';
     }else rh.style.display='none';
   }
   if(rb){
-    let board=null;
-    if(SEA.races){for(const r of SEA.races)if(r.board&&r.board.length){board=r.board;break}}
-    if(board&&board.length){
+    // show boards for nearby races that have scores, each with its track name
+    const racesWithBoard=(SEA.races||[]).filter(r=>r.board&&r.board.length);
+    if(racesWithBoard.length){
       rb.style.display='block';
-      rb.innerHTML='<b>🏁 Leaderboard</b>'+board.slice(0,8).map((row,i)=>'<div>'+(i+1)+'. '+(row.name||'?')+' — '+(row.ms/1000).toFixed(1)+'s</div>').join('');
+      rb.innerHTML=racesWithBoard.map(r=>{
+        const title='<b>🏁 '+(r.name||r.id)+'</b>';
+        const rows=r.board.slice(0,8).map((row,i)=>'<div>'+(i+1)+'. '+(row.name||'?')+' — '+(row.ms/1000).toFixed(1)+'s</div>').join('');
+        return title+rows;
+      }).join('<hr style="border:0;border-top:1px solid rgba(255,255,255,.15);margin:6px 0">');
     }else rb.style.display='none';
   }
 }
+
 
 // ---- state intake ----
 // The server simulates the sea and PUSHES 'sea:state' ~15x/s (small deltas); drawing runs on its own animation frame loop
@@ -1905,6 +1919,8 @@ function seaEmitIntent(){
 function seaSendIntent(mx,my){
   mx=Math.round(mx*100)/100;my=Math.round(my*100)/100;
   seaIntent={mx,my};
+  // Drive local prediction immediately so the boat moves the same frame as the stick
+  try{if(window.SeaView&&SeaView.setLocalIntent)SeaView.setLocalIntent(mx,my)}catch(e){}
   if(!seaOpen())return;
   const now=performance.now(),moving=!!(mx||my);
   if(moving&&now-seaSentAt<33&&Math.hypot(mx-seaSentI.mx,my-seaSentI.my)<0.08)return; // throttle
