@@ -1,7 +1,7 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const Sea=require('./sea'); // open-sea rules (pure) + multiplayer helpers
-const SEA_PROTO=2; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
+const SEA_PROTO=3; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
 const seaSessions=new Map(); // uid -> {session, sockId, name, emoji, emojiUntil, emojiMeta, proto, dropAt, saveTimer, saving, again}
 const seaVitals=new Map();   // uid -> {hp,at}  boat health at the moment the player left the sea; it keeps regenerating while away (computed lazily)
 const seaCooldown=new Map(); // uid -> timestamp: 'Leave Sea' / being sunk blocks sailing out again until then. Docking at home never sets it.
@@ -60,6 +60,13 @@ function seaEnd(uid,slot,now,o){
     // leave a visible wreck so every sailor sees the boat drown and can loot it
     try{Sea.addPlayerWreck(uid,p.x,p.y,1)}catch(e){}
   }
+  // leave any sea team
+  try{
+    const tl=Sea.teamLeave(uid);
+    if(tl&&tl.ok&&!tl.dissolved){
+      for(const m of tl.members||[])seaEmitTo(m,'sea:team',{op:'left',uid,leader:tl.leader,members:tl.members});
+    }
+  }catch(e){}
   seaStoreHp(uid,o.sunk?0:p.hp,now);
   if(o.cooldown||o.sunk)seaCooldown.set(uid,now+Sea.CFG.seaCooldownMs);
   if(slot.saveTimer){clearTimeout(slot.saveTimer);slot.saveTimer=0}
@@ -277,7 +284,7 @@ io.on('connection',s=>{
         const tSlot=seaSessions.get(d.targetUid);
         if(!tSlot||!tSlot.session||tSlot.session.status!=='sailing')r={ok:false,err:'no_target'};
         else{
-          r=Sea.pvpAttack(slot.session,tSlot.session.player,now);
+          r=Sea.pvpAttack(slot.session,tSlot.session.player,now,identUid,d.targetUid);
           if(r.ok&&r.sunk){sunkSlot=tSlot;sunkUid=d.targetUid}
           else if(r.ok&&r.hit)seaEmitTo(d.targetUid,'sea:event',{t:'pvp_hit',by:slot.name,hp:tSlot.session.player.hp,sea:seaPackFor(d.targetUid,tSlot,now)});
         }
@@ -307,6 +314,45 @@ io.on('connection',s=>{
       seaEmitTo(uid,'sea:emoji',payload);
     }
     reply({ok:true,id,ttl:v.ttl,until:slot.emojiUntil})});
+  // ---- teaming ----
+  s.on('sea:team',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!d||typeof d!=='object'||!lim('seaAct',12,6))return reply({ok:false,err:'busy'});
+    const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
+    const now=Date.now(),p=slot.session.player;
+    if(d.op==='invite'){
+      const toUid=d.toUid;if(!toUid||toUid===identUid)return reply({ok:false,err:'bad'});
+      const tSlot=seaSessions.get(toUid);if(!tSlot||!tSlot.session||tSlot.session.status!=='sailing')return reply({ok:false,err:'no_target'});
+      const r=Sea.teamInvite(identUid,toUid,slot.name,tSlot.name,p,tSlot.session.player);
+      if(r.ok)seaEmitTo(toUid,'sea:team',{op:'invite',teamId:r.teamId,from:identUid,name:slot.name});
+      return reply(r);
+    }
+    if(d.op==='accept'){
+      const r=Sea.teamAccept(identUid,d.teamId,slot.name);
+      if(r.ok){
+        for(const m of r.members)seaEmitTo(m,'sea:team',{op:'joined',teamId:r.teamId,leader:r.leader,members:r.members,name:slot.name});
+      }
+      return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
+    }
+    if(d.op==='leave'){
+      const r=Sea.teamLeave(identUid);
+      if(r.ok&&!r.dissolved){
+        for(const m of r.members)seaEmitTo(m,'sea:team',{op:'left',uid:identUid,leader:r.leader,members:r.members});
+      }
+      return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
+    }
+    reply({ok:false,err:'bad_op'})});
+  // ---- racing ----
+  s.on('sea:race',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!d||typeof d!=='object'||!lim('seaAct',8,3))return reply({ok:false,err:'busy'});
+    const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
+    const now=Date.now();
+    if(d.op==='join'){
+      const r=Sea.raceJoin(identUid,slot.name,slot.session.player,d.raceId);
+      return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
+    }
+    reply({ok:false,err:'bad_op'})});
   // {leave:true} = 'Leave Sea' (works anywhere, starts the 30 s cooldown). Without it = DOCK: only accepted next to the home island, no cooldown.
   s.on('sea:return',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
