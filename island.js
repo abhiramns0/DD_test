@@ -153,7 +153,8 @@ function normalize(raw){
   return{ok:true,dropped,doc:{v:SCHEMA,unlocked,structures:out,
     nextId:Math.max(maxId+1,isInt(raw.nextId)&&raw.nextId<1e9?raw.nextId:0),
     progress:{level:into.level,xp:into.xp,totalXp:into.totalXp},
-    awards,resources:raw.resources&&typeof raw.resources==='object'&&!Array.isArray(raw.resources)?raw.resources:{}}}}
+    awards,resources:raw.resources&&typeof raw.resources==='object'&&!Array.isArray(raw.resources)?raw.resources:{},
+    sea}}} // sea (gems, explored islets, voyages) MUST be returned here - dropping it wiped the gem total on every load/save
 
 // ---- player actions. Input is untrusted: every field is checked here. -> {ok:true,doc} | {ok:false,err}
 // XP is intentionally NOT an action: clients can never grant themselves XP through island:act.
