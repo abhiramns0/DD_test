@@ -1,7 +1,7 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const Sea=require('./sea'); // open-sea rules (pure) + multiplayer helpers
-const SEA_PROTO=3; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
+const SEA_PROTO=4; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
 const seaSessions=new Map(); // uid -> {session, sockId, name, emoji, emojiUntil, emojiMeta, proto, dropAt, saveTimer, saving, again}
 const seaVitals=new Map();   // uid -> {hp,at}  boat health at the moment the player left the sea; it keeps regenerating while away (computed lazily)
 const seaCooldown=new Map(); // uid -> timestamp: 'Leave Sea' / being sunk blocks sailing out again until then. Docking at home never sets it.
@@ -60,13 +60,14 @@ function seaEnd(uid,slot,now,o){
     // leave a visible wreck so every sailor sees the boat drown and can loot it
     try{Sea.addPlayerWreck(uid,p.x,p.y,1)}catch(e){}
   }
-  // leave any sea team
+  // leave any sea team + abandon in-progress race
   try{
     const tl=Sea.teamLeave(uid);
     if(tl&&tl.ok&&!tl.dissolved){
       for(const m of tl.members||[])seaEmitTo(m,'sea:team',{op:'left',uid,leader:tl.leader,members:tl.members});
     }
   }catch(e){}
+  try{Sea.raceAbandon(uid)}catch(e){}
   seaStoreHp(uid,o.sunk?0:p.hp,now);
   if(o.cooldown||o.sunk)seaCooldown.set(uid,now+Sea.CFG.seaCooldownMs);
   if(slot.saveTimer){clearTimeout(slot.saveTimer);slot.saveTimer=0}
@@ -339,6 +340,10 @@ io.on('connection',s=>{
       if(r.ok&&!r.dissolved){
         for(const m of r.members)seaEmitTo(m,'sea:team',{op:'left',uid:identUid,leader:r.leader,members:r.members});
       }
+      return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
+    }
+    if(d.op==='decline'){
+      const r=Sea.teamDecline(identUid,d.teamId);
       return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
     }
     reply({ok:false,err:'bad_op'})});
