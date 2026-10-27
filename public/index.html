@@ -54,6 +54,57 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
  #sea.ov{padding:0!important;gap:0;justify-content:flex-start;align-items:stretch;background:#0d4a6a;backdrop-filter:none;-webkit-backdrop-filter:none;overflow:hidden;touch-action:none}
 #sea #seaCv{position:absolute!important;left:0;top:0;width:100%!important;height:100%!important;z-index:0;display:block}
+
+/* ---- Open Sea controls (joystick bottom-centre, attack bottom-right, emoji ring bottom-left, anchor top-right) ---- */
+#sea button.sbtn,#sea button.seaLeave,#sea button.seaDock{margin:0;padding:0;font:inherit;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#seaTop{position:absolute;z-index:3;top:0;left:0;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0 calc(env(safe-area-inset-left,0px) + 12px);display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none;max-width:calc(100% - 140px)}
+#sea .seaPill{background:rgba(255,255,255,.9);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25);display:flex;align-items:center;gap:7px;white-space:nowrap}
+#seaNetDot{width:9px;height:9px;border-radius:50%;background:#35c759;box-shadow:0 0 0 2px rgba(255,255,255,.8);flex:none;transition:background .3s}
+#seaNetDot.mid{background:#ffb020}#seaNetDot.bad{background:#e5484d}
+#sea .seaHpBox{padding:5px 11px 5px 8px;gap:7px}
+#sea .hpTrack{display:block;width:92px;height:10px;border-radius:99px;background:rgba(39,64,90,.22);overflow:hidden}
+#seaHpFill{display:block;height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#4fc468,#a6e66b);transition:width .25s linear}
+#seaHpFill.mid{background:linear-gradient(90deg,#ffb020,#ffd34d)}#seaHpFill.low{background:linear-gradient(90deg,#e5484d,#ff7a59)}
+#sea .seaHpBox.low{animation:seaHpFlash .8s ease-in-out infinite}
+@keyframes seaHpFlash{50%{box-shadow:0 3px 0 rgba(39,64,90,.25),0 0 0 3px rgba(229,72,77,.75)}}
+#seaHpTxt{min-width:34px;text-align:right}
+#seaMsg{margin:0;font-size:12px!important;font-weight:700;color:#e8f6fc;text-shadow:0 1px 2px rgba(0,0,0,.65);text-align:left;white-space:normal;line-height:1.25}
+/* anchor = Leave Sea */
+#sea button.seaLeave{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 10px);right:calc(env(safe-area-inset-right,0px) + 56px);display:flex;align-items:center;gap:6px;border-radius:999px;padding:5px 13px 5px 9px;font-weight:800;font-size:13px;letter-spacing:.6px;color:#fff;background:linear-gradient(#32678a,#1e4863);box-shadow:0 3px 0 #11304a,inset 0 0 0 2px rgba(255,255,255,.25)}
+#sea button.seaLeave .anc{display:inline-block;font-size:20px;line-height:1;transform-origin:50% 10%;animation:seaSway 3.2s ease-in-out infinite;filter:drop-shadow(0 1px 0 rgba(0,0,0,.4))}
+@keyframes seaSway{0%,100%{transform:rotate(-13deg)}50%{transform:rotate(13deg)}}
+#sea button.seaLeave:active{transform:translateY(2px);box-shadow:0 1px 0 #11304a,inset 0 0 0 2px rgba(255,255,255,.25)}
+/* floating DOCK over the home island */
+#sea button.seaDock{position:absolute;z-index:5;left:0;top:0;display:none;border-radius:999px;padding:9px 18px 9px 14px;font-weight:800;font-size:16px;letter-spacing:.4px;color:#fff;white-space:nowrap;background:linear-gradient(#45dcaa,#1fae8c);box-shadow:0 5px 0 #12806a,0 0 0 3px rgba(255,255,255,.85),0 10px 18px rgba(0,0,0,.25);will-change:transform;animation:seaBob 1.15s ease-in-out infinite}
+#sea button.seaDock::after{content:'';position:absolute;left:50%;bottom:-10px;margin-left:-8px;border:8px solid transparent;border-top:10px solid #1fae8c;border-bottom:0}
+@keyframes seaBob{50%{margin-top:-7px}}
+#sea button.seaDock:active{filter:brightness(.92)}
+/* movement joystick */
+#seaStick{position:absolute;z-index:4;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 28px);width:128px;height:128px;margin-left:-64px;border-radius:50%;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.28),rgba(255,255,255,.1) 72%);border:3px solid rgba(255,255,255,.55);box-shadow:0 4px 0 rgba(10,40,60,.3),inset 0 0 18px rgba(255,255,255,.18);touch-action:none;user-select:none;-webkit-user-select:none}
+#seaStick::before{content:'';position:absolute;inset:36px;border-radius:50%;border:2px dashed rgba(255,255,255,.3)}
+#seaKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#d9f1fb 55%,#9fd3e8);box-shadow:0 4px 0 rgba(10,40,60,.35);pointer-events:none;transition:transform .12s ease-out}
+#seaStick.on #seaKnob{transition:none}
+/* attack: tap to fire, the dark wedge is the reload */
+#sea button.sbtn#seaAttack{position:absolute;z-index:4;right:calc(env(safe-area-inset-right,0px) + 18px);bottom:calc(env(safe-area-inset-bottom,0px) + 36px);width:86px;height:86px;border-radius:50%;font-size:36px;color:#fff;overflow:hidden;background:radial-gradient(circle at 35% 28%,#ffa174,#ff5a3c 60%,#d63a24);box-shadow:0 5px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7)}
+#seaAttack .cd{position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(10,30,45,.66) calc(var(--cd,0)*360deg),transparent 0);pointer-events:none}
+#seaAttack .ic{position:relative;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3))}
+#seaAttack.cool{filter:saturate(.5)}
+#seaAttack.rdy{animation:seaRdy 1s ease-in-out infinite}
+@keyframes seaRdy{50%{box-shadow:0 5px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7),0 0 22px 7px rgba(255,205,120,.8)}}
+#sea button.sbtn#seaAttack:active{transform:translateY(3px) scale(.96);box-shadow:0 2px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7)}
+#seaAttack.shake{animation:seaShake .22s}
+@keyframes seaShake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+/* emoji button + radial menu */
+#sea button.sbtn#seaEmoBtn{position:absolute;z-index:4;left:calc(env(safe-area-inset-left,0px) + 18px);bottom:calc(env(safe-area-inset-bottom,0px) + 40px);width:62px;height:62px;border-radius:50%;font-size:30px;background:linear-gradient(#fff,#e3f3fa);box-shadow:0 4px 0 #9fc3d6,0 0 0 3px rgba(255,255,255,.55)}
+#sea button.sbtn#seaEmoBtn:active{transform:translateY(2px);box-shadow:0 2px 0 #9fc3d6,0 0 0 3px rgba(255,255,255,.55)}
+#seaEmoRing{position:absolute;inset:0;z-index:6;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
+#seaEmoRing.open{display:block}
+#seaEmoShade{position:absolute;inset:0;background:radial-gradient(circle at var(--cx,50%) var(--cy,50%),rgba(8,32,48,.12),rgba(8,32,48,.58))}
+#seaEmoRing .ei{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.96);display:flex;align-items:center;justify-content:center;font-size:25px;box-shadow:0 3px 0 rgba(39,64,90,.3);transform:scale(.3);opacity:0;transition:transform .17s cubic-bezier(.2,1.5,.4,1),opacity .12s;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#seaEmoRing.open .ei{transform:scale(1);opacity:1}
+#seaEmoRing .ei.hot{transform:scale(1.34);background:#fff6c9;box-shadow:0 4px 0 #e0b84a,0 0 0 3px #ffd34d}
+#seaEmoHub{position:absolute;width:66px;height:66px;margin:-33px 0 0 -33px;border-radius:50%;background:rgba(255,255,255,.2);border:2px dashed rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;font-size:32px;color:#fff;pointer-events:none}
+.islChip{background:rgba(255,255,255,.92);color:var(--ink);font-weight:800;font-size:13px;border-radius:999px;padding:4px 11px;box-shadow:0 2px 0 rgba(39,64,90,.22)}
 #island.ov{padding:0!important;gap:0;justify-content:flex-start;align-items:stretch;backdrop-filter:none;-webkit-backdrop-filter:none;overflow:hidden;touch-action:none}
 #island #islandCv{position:absolute!important;left:0;top:0;width:100%!important;height:100%!important;z-index:0;display:block}
  
@@ -268,6 +319,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
       <div style="height:10px;border-radius:999px;background:rgba(39,64,90,.25);overflow:hidden;border:1px solid rgba(255,255,255,.45)"><div id="islandXpBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s ease"></div></div>
       <p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;color:rgba(255,255,255,.9);text-align:center;text-shadow:0 1px 2px rgba(39,64,90,.45)"></p>
     </div>
+    <div id="islandGems" style="display:none;margin-top:8px;gap:6px;justify-content:center;flex-wrap:wrap;pointer-events:none">
+      <span class="islChip">💎 <b id="islGemN">0</b></span><span class="islChip">🏝️ <b id="islIsletN">0</b></span><span class="islChip">⛵ <b id="islVoyN">0</b></span><span class="islChip" id="islandHp" style="display:none"></span>
+    </div>
   </div>
   <canvas id="islandCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;box-shadow:none;touch-action:none;cursor:grab"></canvas>
   <div style="position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;background:linear-gradient(transparent,rgba(39,64,90,.35))">
@@ -280,40 +334,28 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 </div>
  
  <div class="ov" id="sea" style="display:none;padding:0;gap:0;justify-content:flex-start;background:#0d4a6a">
-  <canvas id="seaCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;touch-action:none;cursor:grab"></canvas>
+  <canvas id="seaCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;touch-action:none"></canvas>
 
-  <!-- Top HUD -->
-  <div style="position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none">
-    <div id="seaHud" style="background:rgba(255,255,255,.88);border-radius:14px;padding:6px 12px;font-weight:800;font-size:13px;color:var(--ink);box-shadow:0 3px 0 rgba(39,64,90,.25)">Open Sea</div>
-    <button class="sec" id="seaDock" style="pointer-events:auto;display:none;margin:0;font-size:14px;padding:7px 14px">🏠 DOCK</button>
+  <!-- top-left: connection dot + gems/islets/sailors, boat health, hint -->
+  <div id="seaTop">
+    <div id="seaHud" class="seaPill"><span id="seaNetDot" title="Connection"></span><span id="seaHudTxt">Open Sea</span></div>
+    <div id="seaHp" class="seaPill seaHpBox" aria-label="Boat health"><span>❤️</span><span class="hpTrack"><i id="seaHpFill"></i></span><b id="seaHpTxt">100%</b></div>
+    <p id="seaMsg">Sailing…</p>
   </div>
 
-  <!-- Bottom controls -->
-  <div style="position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;background:linear-gradient(transparent,rgba(10,40,60,.55))">
-    <p class="hint" id="seaMsg" style="color:#e8f6fc;margin:0;text-shadow:0 1px 2px rgba(0,0,0,.5)">Sailing…</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;pointer-events:auto">
-      <button class="sec" id="seaAttack" style="margin:0">⚔️ ATTACK</button>
-      <button class="sec" id="seaCollect" style="margin:0">💎 COLLECT</button>
-      <button class="sec" id="seaEmoji" style="margin:0">😊 SIGNAL</button>
-      <button class="sec" id="seaBack" style="margin:0">LEAVE SEA</button>
-    </div>
-  </div>
+  <!-- top-right (next to the sound buttons): Leave Sea -->
+  <button type="button" id="seaBack" class="seaLeave" aria-label="Leave the sea"><span class="anc">⚓</span><span>LEAVE</span></button>
 
-  <!-- Emoji radial / panel (toggled by SIGNAL) -->
-  <div id="seaEmojiMenu" style="display:none;position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);z-index:4;background:rgba(255,255,255,.94);border-radius:18px;padding:10px;box-shadow:0 4px 0 rgba(39,64,90,.25);max-width:92vw">
-    <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:280px">
-      <button type="button" class="rb seaEmo" data-e="👋" style="width:40px;height:40px;font-size:20px;pointer-events:auto">👋</button>
-      <button type="button" class="rb seaEmo" data-e="😂" style="width:40px;height:40px;font-size:20px;pointer-events:auto">😂</button>
-      <button type="button" class="rb seaEmo" data-e="⚠️" style="width:40px;height:40px;font-size:20px;pointer-events:auto">⚠️</button>
-      <button type="button" class="rb seaEmo" data-e="⚔️" style="width:40px;height:40px;font-size:20px;pointer-events:auto">⚔️</button>
-      <button type="button" class="rb seaEmo" data-e="🤝" style="width:40px;height:40px;font-size:20px;pointer-events:auto">🤝</button>
-      <button type="button" class="rb seaEmo" data-e="⛵" style="width:40px;height:40px;font-size:20px;pointer-events:auto">⛵</button>
-      <button type="button" class="rb seaEmo" data-e="💎" style="width:40px;height:40px;font-size:20px;pointer-events:auto">💎</button>
-      <button type="button" class="rb seaEmo" data-e="🆘" style="width:40px;height:40px;font-size:20px;pointer-events:auto">🆘</button>
-      <button type="button" class="rb seaEmo" data-e="👍" style="width:40px;height:40px;font-size:20px;pointer-events:auto">👍</button>
-      <button type="button" class="rb seaEmo" data-e="❤️" style="width:40px;height:40px;font-size:20px;pointer-events:auto">❤️</button>
-    </div>
-  </div>
+  <!-- floats over the home island while you are close enough to land -->
+  <button type="button" id="seaDock" class="seaDock" aria-label="Dock at the home island">🏠 DOCK</button>
+
+  <!-- bottom: emoji (left) · joystick (middle) · attack (right) -->
+  <button type="button" id="seaEmoBtn" class="sbtn" aria-label="Send an emoji">😊</button>
+  <div id="seaStick" aria-label="Steering joystick"><div id="seaKnob"></div></div>
+  <button type="button" id="seaAttack" class="sbtn" aria-label="Attack"><i class="cd"></i><span class="ic">⚔️</span></button>
+
+  <!-- emoji radial menu -->
+  <div id="seaEmoRing"><div id="seaEmoShade"></div><div id="seaEmoItems"></div><div id="seaEmoHub">😊</div></div>
 </div>
  
  <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
@@ -332,7 +374,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=9"></script>
+ <script src="/sea-view.js?v=10"></script>
 <script>
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -1056,7 +1098,7 @@ let bt;function banner(h,ms=3200,bad=false,card=false){const b=$('banner');b.inn
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const netEl=$('net');
 // ---- sockets (optional simulated latency / loss for debugging)
-const socket=io(SERVER,{transports:['websocket','polling']});
+const socket=io(SERVER,{transports:['websocket','polling'],reconnectionDelay:300,reconnectionDelayMax:2500,timeout:10000});
 // While leaving a room, game messages still in flight are ignored so they can't drag the player back into the game or lobby.
 let leaving=false;{const _on=socket.on.bind(socket),KEEP=['connect','disconnect','connect_error','reconnect'];socket.on=(ev,fn)=>_on(ev,(...a)=>{if(leaving&&!KEEP.includes(ev))return;return fn(...a)})}
 function leaveRoom(){leaving=true;clearSess();resetMenu();let done=false;const fin=()=>{if(!done){done=true;leaving=false}};try{socket.emit('leave',fin)}catch(e){}setTimeout(fin,2000)}
@@ -1070,7 +1112,7 @@ function resetMenu(msg){isSolo=false;crocs.clear();roomCode='';me=null;st='MENU'
 function gotAck(a){me=a.id;solo=a.solo;dbgOK=a.dbg;roomCode=a.code;saveSess(a);try{socket.emit('skin',MY_SKIN);if(MY_NAME)socket.emit('name',MY_NAME)}catch(e){}}
 socket.on('connect',()=>{netEl.textContent='● Connected';netEl.style.color='#bff5c8';syncClock();setTimeout(syncClock,400);setTimeout(syncClock,1200);
  if(sess)socket.emit('resume',sess,a=>{if(a&&a.ok){gotAck(a);lost=false}else{clearSess();if(lost||me)resetMenu('Connection lost. Please rejoin the room.');lost=false}});
- else if(lost){lost=false;resetMenu('Connection lost. Please rejoin the room.')}});
+ else if(lost){lost=false;if(me||roomCode)resetMenu('Connection lost. Please rejoin the room.')}}); // only when a game ROOM was lost - a reconnect on the island / Open Sea screen must not send you to the menu
 socket.on('disconnect',()=>{lost=true;netEl.textContent='● Reconnecting…';netEl.style.color='#ffe29a'});
 socket.on('connect_error',()=>{netEl.textContent='● Server unreachable';netEl.style.color='#ffb3b3'});
 setInterval(()=>socket.connected&&syncClock(),3000);
@@ -1623,7 +1665,7 @@ $('nameGo').onclick=()=>{if(!$('agreeCb').checked)return;
 let ISL=null,islSel='';
 const emitP=(ev,data,ms)=>new Promise(res=>{let done=false;const t=setTimeout(()=>{if(!done){done=true;res(null)}},ms||6000);try{socket.emit(ev,data,r=>{if(!done){done=true;clearTimeout(t);res(r)}})}catch(e){clearTimeout(t);res(null)}});
 const islSay=t=>{$('islandMsg').textContent=t};
-const islPaint=()=>{if(window.IslandView&&ISL)IslandView.draw($('islandCv'),ISL,{selectedId:islSel});islRenderProg()};
+const islPaint=()=>{if(window.IslandView&&ISL)IslandView.draw($('islandCv'),ISL,{selectedId:islSel});islRenderProg();islRenderGems();islRenderSail()};
 const islOpen=()=>$('island').style.display==='flex';
 function islRenderProg(){
   const box=$('islandProg');if(!box)return;
@@ -1642,7 +1684,7 @@ async function openIsland(){
   show('island');islSel='';islSay('Loading your island…');
   for(let i=0;i<3;i++){
     const r=await emitP('island:load',{});
-    if(r&&r.ok){ISL=r.island;islPaint();islSay('Your raft is ready at the Boat Jetty. Sail Out anytime.');return}
+    if(r&&r.ok){ISL=r.island;seaSetCd(r.seaCooldownMs||0);seaSetVit(r.vitals);islPaint();islSay(seaCdLeft()>0?'Your boat is being repaired — you can sail out again soon.':'Your raft is ready at the Boat Jetty. Sail Out anytime.');return}
     if(r&&r.err==='not_ready'){await sendIdent();continue}
     if(r&&r.err==='busy'){await new Promise(x=>setTimeout(x,1200));continue}
     break}
@@ -1665,167 +1707,355 @@ socket.on('connect',()=>{if(islOpen())setTimeout(openIsland,400)});
 window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen==='function'&&seaOpen())seaPaint()});
 
 // ---- Open Sea (exploration + multiplayer encounters) ----
-let SEA=null,seaLoop=0,seaIntent={mx:0,my:0};
+// Controls: joystick (bottom centre) · attack (bottom right) · emoji ring (bottom left) · ⚓ Leave (top right) · DOCK floats over the home island.
+const SEA_PROTO=2; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
+let SEA=null,seaIntent={mx:0,my:0},seaLeaving=false;
 const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
-const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView&&SEA)SeaView.draw(cv,SEA)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}}; // feeds the renderer; its own animation loop does the drawing
- const seaSay=t=>{const el=$('seaMsg');if(el)el.textContent=t};
+const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView)SeaView.draw(cv,null)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}}; // redraw only (never touches the snapshot age)
+const svx=(fn,...a)=>{try{if(window.SeaView&&typeof SeaView[fn]==='function')return SeaView[fn](...a)}catch(e){}}; // tolerant call: an older cached sea-view.js may lack newer helpers
+let seaMsgNow='';
+const seaSay=t=>{if(t===seaMsgNow)return;seaMsgNow=t;const el=$('seaMsg');if(el)el.textContent=t};
+
+// ---- sail-out cooldown, boat health and reload timers (the SERVER enforces all of them; these only drive the UI) ----
+let seaCdUntil=0,seaVit=null,seaAtkReady=0,seaAtkCd=700,seaEmoAt=0;
+const seaCdLeft=()=>Math.max(0,seaCdUntil-Date.now());
+function seaSetCd(ms){seaCdUntil=ms>0?Date.now()+ms:0;try{islRenderSail()}catch(e){}}
+function seaSetVit(v){if(v&&typeof v.hp==='number')seaVit={hp:v.hp,maxHp:v.maxHp||100,regen:v.regenPerSec||(v.maxHp||100)/30,t:Date.now()}}
+const seaVitNow=()=>seaVit?Math.min(seaVit.maxHp,seaVit.hp+(Date.now()-seaVit.t)/1000*seaVit.regen):null;
+function islRenderGems(){ // gems / islets / voyages are kept by the server and shown on the island every time
+  const el=$('islandGems');if(!el)return;const g=ISL&&ISL.sea;
+  if(!g){el.style.display='none';return}
+  el.style.display='flex';$('islGemN').textContent=g.treasures||0;$('islIsletN').textContent=g.islets||0;$('islVoyN').textContent=g.voyages||0}
+function islRenderSail(){
+  const b=$('islandSail');if(!b)return;
+  const left=seaCdLeft();
+  b.textContent=left>0?'⏳ READY IN '+Math.ceil(left/1000)+'s':'⛵ SAIL OUT';
+  b.style.opacity=left>0?'.65':'';
+  const chip=$('islandHp'),hp=seaVitNow();
+  if(chip){if(hp!=null&&seaVit&&hp<seaVit.maxHp-0.5){chip.style.display='';chip.textContent='🔧 Boat '+Math.round(100*hp/seaVit.maxHp)+'%'}else chip.style.display='none'}}
+setInterval(()=>{if(islOpen())islRenderSail()},500);
+
+// ---- HUD ----
 function seaUpdateHud(){
   if(!SEA)return;
-  const d=SEA.discoveries||{};
-  const n=(SEA.others&&SEA.others.length)||0;
-  const hud=$('seaHud');if(hud)hud.textContent='⛵ Sea · 💎 '+(d.treasures||0)+' · 🏝️ '+(d.islets||0)+' · 👥 '+n;
-  const dock=$('seaDock');if(dock)dock.style.display=SEA.nearHome?'':'none';
-  if(SEA.nearHome)seaSay('Near home — Dock to return to your island');
+  const d=SEA.discoveries||{},n=(SEA.others&&SEA.others.length)||0,p=SEA.player||{};
+  const t=$('seaHudTxt');if(t)t.textContent='💎 '+(d.treasures||0)+' · 🏝️ '+(d.islets||0)+' · 👥 '+n;
+  const max=p.maxHp||100,hp=Math.max(0,p.hp==null?max:p.hp),pct=Math.max(0,Math.min(100,Math.round(100*hp/max)));
+  const f=$('seaHpFill'),tx=$('seaHpTxt'),box=$('seaHp');
+  if(f){f.style.width=pct+'%';f.className=pct<=25?'low':pct<=55?'mid':''}
+  if(tx)tx.textContent=pct+'%';
+  if(box)box.classList.toggle('low',pct<=25);
+  const cd=Math.round(((SEA.cfg&&SEA.cfg.seaCooldownMs)||30000)/1000);
+  seaSay(SEA.nearHome?'🏠 Home island — tap DOCK to land (no cooldown)':'Joystick to sail · ⚔️ attack · ⚓ Leave has a '+cd+' s cooldown');
 }
 function seaHandleEvents(evs){
   (evs||[]).forEach(e=>{
-    if(e.t==='treasure')toast('💎 Treasure +'+e.value);
+    if(e.t==='treasure')svx('popup','+'+(e.value||1)+' 💎'); // collected automatically when you sail close
     else if(e.t==='explore')toast('🏝️ Discovered '+e.name);
-    else if(e.t==='kill')toast(e.loot?'⚔️ Wreck ready to loot':'⚔️ Target sunk');
-    else if(e.t==='loot')toast('✨ Loot +'+e.gained);
+    else if(e.t==='kill')toast(e.loot?'⚔️ Wreck sunk — sail over it to loot':'⚔️ Target sunk');
+    else if(e.t==='loot')svx('popup','+'+(e.gained||1)+' 💎');
   });
 }
-// The server simulates the sea and PUSHES 'sea:state' ~15x/s; drawing runs on its own animation frame loop
+
+// ---- state intake ----
+// The server simulates the sea and PUSHES 'sea:state' ~15x/s (small deltas); drawing runs on its own animation frame loop
 // (SeaView.start), so the picture never waits on the network. The watchdog only steps in if pushes stop.
-let seaWatch=0,seaWatchBusy=false,seaFails=0,seaSentI={mx:0,my:0},seaSentAt=0;
+let seaWatch=0,seaBeat=0,seaWatchBusy=false,seaFails=0,seaStall=0,seaSentI={mx:0,my:0},seaSentAt=0;
+function seaVersionMismatch(){ // server and page disagree about the wire format (deploy in between): reload once, never loop
+  let last=0;try{last=+sessionStorage.getItem('sea_reload')||0}catch(e){}
+  if(Date.now()-last<60000)return;
+  try{sessionStorage.setItem('sea_reload',String(Date.now()))}catch(e){}
+  toast('Game updated — reloading…');setTimeout(()=>location.reload(),700)}
 function applySea(sea){
   if(!sea)return;
-  SEA=sea;seaFails=0;
+  if(sea.proto!==SEA_PROTO)seaVersionMismatch();
+  if(SEA){if(!sea.islets&&SEA.islets)sea.islets=SEA.islets;if(!sea.cfg&&SEA.cfg)sea.cfg=SEA.cfg;if(!sea.mp&&SEA.mp)sea.mp=SEA.mp} // deltas leave out the static world
+  SEA=sea;seaFails=0;seaStall=0;
   try{SeaView.setState(sea)}catch(e){}
   seaHandleEvents(sea.events);seaUpdateHud();
 }
 async function seaWatchdog(force){
-  if(!seaOpen()||seaWatchBusy)return;
-  if(!force&&window.SeaView&&SeaView.stateAge()<1500)return;
+  if(!seaOpen()||seaWatchBusy||seaLeaving)return;
+  const age=window.SeaView?SeaView.stateAge():Infinity;
+  if(!force&&age<1500)return;
   seaWatchBusy=true;
   try{
-    if(!socket.connected){seaSay('Reconnecting…');return}
-    const r=await emitP('sea:tick',{},2500);
-    if(r&&r.ok&&r.sea){applySea(r.sea);if(!SEA.nearHome)seaSay('Follow the anchor home · Dock when near 🏠');return}
+    if(!socket.connected){seaSay('Reconnecting…');if(age>8000){try{socket.connect()}catch(e){}}return}
+    let r=await emitP('sea:tick',{},2500);
+    if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}r=await emitP('sea:tick',{},2500)} // new socket must identify first
+    if(r&&r.ok&&r.sea){applySea(r.sea);if(seaIntent.mx||seaIntent.my)seaEmitIntent();return}
     seaFails++;
-    if(r&&r.err==='no_session'&&seaFails>=2){toast('Lost contact with the sea — returning to your island');seaWatchBusy=false;dockSea();return}
+    if(r&&r.err==='no_session'&&seaFails>=2){seaWatchBusy=false;seaLost();return}
     seaSay('Reconnecting…');
+    // connected on paper but silent for seconds = half-dead connection (phone slept, Wi-Fi <-> mobile switch): replace the socket
+    if(!r&&age>6000&&++seaStall>=2){seaStall=0;try{socket.disconnect();socket.connect()}catch(e){}}
   }finally{seaWatchBusy=false}
 }
 function startSeaLoop(){
   stopSeaLoop();
-  try{SeaView.start($('seaCv'))}catch(e){}
+  try{SeaView.start($('seaCv'),seaFrame)}catch(e){}
   seaWatch=setInterval(()=>seaWatchdog(false),1000);
+  seaBeat=setInterval(()=>{if(seaOpen()&&(seaIntent.mx||seaIntent.my))seaEmitIntent()},300); // steering heartbeat: the server stops a boat whose input goes silent
 }
 function stopSeaLoop(){
   if(seaWatch){clearInterval(seaWatch);seaWatch=0}
+  if(seaBeat){clearInterval(seaBeat);seaBeat=0}
   try{SeaView.stop()}catch(e){}
+}
+
+// ---- steering ----
+function seaEmitIntent(){
+  seaSentAt=performance.now();seaSentI={mx:seaIntent.mx,my:seaIntent.my};
+  if(!socket.connected)return;
+  if(seaIntent.mx||seaIntent.my)socket.volatile.emit('sea:intent',seaIntent); // refreshed every 300 ms, so a lost packet costs nothing
+  else{socket.emit('sea:intent',seaIntent);setTimeout(()=>{if(!seaIntent.mx&&!seaIntent.my&&socket.connected)socket.emit('sea:intent',seaIntent)},180)} // a STOP must never get lost
 }
 function seaSendIntent(mx,my){
   mx=Math.round(mx*100)/100;my=Math.round(my*100)/100;
   seaIntent={mx,my};
+  if(!seaOpen())return;
   const now=performance.now(),moving=!!(mx||my);
-  if(moving&&now-seaSentAt<50&&Math.hypot(mx-seaSentI.mx,my-seaSentI.my)<0.1)return; // throttle drag spam
+  if(moving&&now-seaSentAt<50&&Math.hypot(mx-seaSentI.mx,my-seaSentI.my)<0.1)return; // throttle
   if(mx===seaSentI.mx&&my===seaSentI.my&&now-seaSentAt<400)return;
-  seaSentAt=now;seaSentI={mx,my};
-  if(socket.connected)socket.emit('sea:intent',seaIntent);
+  seaEmitIntent();
 }
 
+// ---- per-frame UI (called by the renderer after each drawn frame) ----
+let seaNetAt=0;
+function seaTargetInRange(){
+  if(!SEA||!SEA.player)return false;
+  const p=SEA.player,ar=(SEA.cfg&&SEA.cfg.attackRange)||70,pr=(SEA.mp&&SEA.mp.pvpRange)||90;
+  for(const o of(SEA.others||[]))if(o.dist!=null&&o.dist<=pr)return true;
+  for(const arr of[SEA.npcs,SEA.wildlife])for(const e of(arr||[]))if(Math.hypot(e.x-p.x,e.y-p.y)<=ar)return true;
+  return false}
+function seaFrame(){
+  const now=performance.now(),btn=$('seaAttack');
+  if(btn){ // reload wedge shrinks while the cannon reloads; the button glows when something is in range
+    const left=seaAtkReady-now;
+    if(left>0){btn.style.setProperty('--cd',Math.min(1,left/seaAtkCd).toFixed(3));if(!btn.classList.contains('cool')){btn.classList.add('cool');btn.classList.remove('rdy')}}
+    else{if(btn.classList.contains('cool')){btn.style.setProperty('--cd','0');btn.classList.remove('cool')}
+      const r=seaTargetInRange();if(r!==btn.classList.contains('rdy'))btn.classList.toggle('rdy',r)}}
+  const dk=$('seaDock');
+  if(dk){ // the DOCK button floats above the home island, only while you are close enough
+    const h=SEA&&SEA.nearHome&&!seaLeaving?svx('getHome'):null;
+    if(h){const x=Math.max(74,Math.min(h.w-74,h.x)),y=Math.max(120,Math.min(h.h-200,h.y));
+      dk.style.display='block';dk.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-100%)'}
+    else if(dk.style.display!=='none')dk.style.display='none'}
+  if(now-seaNetAt>300){seaNetAt=now;const a=window.SeaView?SeaView.stateAge():Infinity,dot=$('seaNetDot');if(dot)dot.className=a<800?'':a<2500?'mid':'bad'}
+}
+
+// ---- entering / leaving ----
+function seaRestoreChrome(){try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}}
 async function enterSea(){
   if(!window.SeaView){toast('Open Sea is not available right now.');return}
   if(!socket.connected){toast('Not connected — wait for the server.');return}
+  const wait=seaCdLeft();
+  if(wait>0){toast('⏳ Your boat is being repaired — '+Math.ceil(wait/1000)+' s');return}
   islSay('Launching from the jetty…');
-  for(let i=0;i<2;i++){
-    const r=await emitP('sea:enter',{},8000);
+  for(let i=0;i<3;i++){
+    const r=await emitP('sea:enter',{proto:SEA_PROTO},8000);
     if(r&&r.ok){
-                  try{SeaView.reset();SeaView.setState(r.sea)}catch(e){}SEA=r.sea;seaIntent={mx:0,my:0};seaSentI={mx:0,my:0};show('sea');
+      try{SeaView.reset()}catch(e){}
+      seaSetVit(r.vitals);seaAtkReady=0;seaEmoAt=0;seaMsgNow='';seaLeaving=false;
+      seaIntent={mx:0,my:0};seaSentI={mx:0,my:0};SEA=null;
+      applySea(r.sea);
+      show('sea');
       try{$('lside').style.display='none';$('setBtn').style.display='none';$('home').style.display='none';$('side').style.display='flex';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
-      seaUpdateHud();seaSay('Follow the anchor home · Dock when near 🏠');
-      startSeaLoop();socket.emit('sea:intent',seaIntent);return}
-   
+      seaUpdateHud();
+      startSeaLoop();seaEmitIntent();return}
+    if(r&&r.err==='cooldown'){seaSetCd(r.waitMs||0);seaSetVit(r.vitals);islSay('Your boat is being repaired — you can sail out again soon.');toast('⏳ Boat repairing — '+Math.ceil((r.waitMs||0)/1000)+' s');return}
     if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
-    if(r&&r.err==='busy'){toast('Too many requests — try again.');return}
-    toast('Could not sail out'+(r&&r.err?': '+r.err:'. Check connection.'));return}
-  toast('Could not sail out — identity not ready. Try again.');
+    if(r&&r.err==='busy'){await new Promise(x=>setTimeout(x,900));continue}
+    if(!r){continue} // no answer (slow link / server waking up): try again
+    toast('Could not sail out'+(r.err?': '+r.err:'. Check connection.'));islSay('Your raft is ready at the Boat Jetty. Sail Out anytime.');return}
+  toast('Could not sail out — check your connection and try again.');islSay('Your raft is ready at the Boat Jetty. Sail Out anytime.');
 }
-
-async function dockSea(){
-  stopSeaLoop();
-  let r=null;
-  try{r=await emitP('sea:return',{},4000)}catch(e){r=null}
-  try{$('lside').style.display='flex';$('setBtn').style.display='flex';$('side').style.display='flex';$('home').style.display='none';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
-  if(r&&r.ok){
-    if(r.island)ISL=r.island;
-    const gems=(r.sea&&r.sea.treasureCount)||(ISL&&ISL.sea&&ISL.sea.treasures)||0;
-    toast(r.nearHome?'🏠 Docked · 💎 '+gems:'Returned · discoveries saved · 💎 '+gems);
-  }else{
-    toast('Returned to island');
-  }
+// switch to the island screen right away; the server's numbers are merged in afterwards by seaApplyReturn()
+function seaToIsland(msg){
+  stopSeaLoop();seaCloseEmo();seaResetStick();
+  const g=SEA&&SEA.discoveries;
+  if(g&&ISL){const o=ISL.sea||{};ISL.sea={voyages:Math.max(o.voyages||0,g.voyages||0),treasures:Math.max(o.treasures||0,g.treasures||0),islets:Math.max(o.islets||0,g.islets||0)}} // show the gems at once
   SEA=null;try{SeaView.reset()}catch(e){}
-  seaIntent={mx:0,my:0};show('island');
+  seaIntent={mx:0,my:0};seaRestoreChrome();show('island');
   try{islPaint()}catch(e){}
-  islSay('Welcome back.');
+  if(msg)islSay(msg)}
+function seaApplyReturn(r){
+  if(!r)return;
+  if(r.island)ISL=r.island;
+  if(typeof r.cooldownMs==='number')seaSetCd(r.cooldownMs);
+  if(r.vitals)seaSetVit(r.vitals);
+  try{islPaint()}catch(e){}}
+async function islSilentRefresh(){ // pulls gems / cooldown / health from the server without changing screens
+  const r=await emitP('island:load',{},5000);
+  if(r&&r.ok){ISL=r.island;seaSetCd(r.seaCooldownMs||0);seaSetVit(r.vitals);if(islOpen())islPaint()}}
+async function seaResume(){ // the server refused to dock: carry on sailing
+  const r=await emitP('sea:tick',{},3000);
+  if(r&&r.ok&&r.sea){applySea(r.sea);startSeaLoop()}else seaLost()}
+function seaLost(){
+  if(seaLeaving)return;seaLeaving=true;
+  toast('Lost contact with the sea — returning to your island');
+  seaToIsland('Back on your island.');seaSetCd(0);
+  seaLeaving=false;islSilentRefresh().catch(()=>{})}
+// DOCK: only at the home island (the server checks), no cooldown, boat health keeps regenerating
+async function dockSea(){
+  if(seaLeaving)return;seaLeaving=true;
+  try{
+    stopSeaLoop();
+    const r=await emitP('sea:return',{},4000);
+    if(r&&r.err==='far'){toast('Sail closer to the home island to dock');seaLeaving=false;await seaResume();return}
+    const gems=SEA&&SEA.discoveries?SEA.discoveries.treasures:0;
+    seaToIsland('🏠 Docked at home. Your boat keeps repairing — sail out any time.');
+    if(r&&(r.ok||r.err==='no_session'))seaApplyReturn(r);else islSilentRefresh().catch(()=>{});
+    toast('🏠 Docked · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||gems||0));
+  }finally{seaLeaving=false}
 }
-
+// LEAVE SEA (anchor): instantly back on the island, then a cooldown before sailing out again
+async function leaveSea(){
+  if(seaLeaving)return;seaLeaving=true;
+  try{
+    const cd=(SEA&&SEA.cfg&&SEA.cfg.seaCooldownMs)||30000,pl=SEA&&SEA.player;
+    if(pl)seaSetVit({hp:pl.hp,maxHp:pl.maxHp||100,regenPerSec:(pl.maxHp||100)/(((SEA.cfg&&SEA.cfg.regenSeconds)||30))});
+    seaSetCd(cd); // optimistic: the server starts the same cooldown
+    seaToIsland('⚓ Back on the island — your boat needs '+Math.round(cd/1000)+' s before the next trip.');
+    toast('⚓ Left the sea · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||0));
+    const r=await emitP('sea:return',{leave:true},5000);
+    if(r&&r.ok)seaApplyReturn(r);
+    else if(r&&r.err==='no_session'){seaSetCd(0);islSilentRefresh().catch(()=>{})} // voyage already gone on the server: no penalty
+    else if(!r)islSilentRefresh().catch(()=>{});
+  }finally{seaLeaving=false}
+}
 $('islandSail').onclick=e=>{e.stopPropagation();enterSea()};
 $('seaDock').onclick=e=>{e.stopPropagation();dockSea()};
-$('seaBack').onclick=e=>{e.stopPropagation();dockSea()};
-$('seaAttack').onclick=async e=>{e.stopPropagation();
-  // Optional engagement: nearest human ship in PvP range, else NPC
-  let targetUid=null;
-  if(SEA&&SEA.others&&SEA.others.length){
-    const range=(SEA.mp&&SEA.mp.pvpRange)||90;
-    const near=SEA.others.find(o=>o.dist<=range);
-    if(near)targetUid=near.uid;
-  }
-  const payload=targetUid?{op:'attack',targetUid}:{op:'attack'};
-  const r=await emitP('sea:act',payload,2000);
-  if(r&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud();
-    if(r.sunk)toast('⚔️ Ship sunk!');else if(r.hit&&targetUid)toast('⚔️ Hit!');else if(r.err==='range')toast('Too far to engage');}
-};
-$('seaCollect').onclick=async e=>{e.stopPropagation();
-  let r=await emitP('sea:act',{op:'collect'},2000);
-  if(r&&!r.ok&&r.err==='nothing')r=await emitP('sea:act',{op:'loot'},2000);
-  if(r&&r.sea){SEA=r.sea;seaHandleEvents(SEA.events);seaPaint();seaUpdateHud();
-    if(r.ok&&r.value)toast('💎 +'+r.value);else if(r.ok&&r.gained)toast('✨ Loot +'+r.gained)}};
+$('seaBack').onclick=e=>{e.stopPropagation();leaveSea()};
 
+// ---- joystick (bottom centre) ----
+function seaResetStick(){const st=$('seaStick'),kn=$('seaKnob');if(st)st.classList.remove('on');if(kn)kn.style.transform='';seaStickId=null;seaSendIntent(0,0)}
+let seaStickId=null;
 (function(){
-  const cv=$('seaCv');if(!cv)return;let drag=null;
-  const steer=e=>{ // drag direction on SCREEN -> sailing direction in the isometric world
-    const dx=e.clientX-drag.x,dy=e.clientY-drag.y,l=Math.hypot(dx,dy);
-    if(l<12){seaSendIntent(0,0);return}
-    const d=SeaView.dirToWorld(dx,dy);seaSendIntent(d.mx,d.my);
-  };
-  cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};try{cv.setPointerCapture(e.pointerId)}catch(err){}});
-  cv.addEventListener('pointermove',e=>{if(drag)steer(e)});
-  const end=()=>{drag=null;seaSendIntent(0,0)};
-  cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);cv.addEventListener('lostpointercapture',end);
-  if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{if(seaOpen())seaSendIntent(mx,my)});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&seaOpen()){seaSendIntent(0,0);setTimeout(()=>seaWatchdog(true),200)}});
+  const st=$('seaStick'),kn=$('seaKnob');if(!st||!kn)return;
+  let cx=0,cy=0;const R=46,DEAD=9;
+  const move=e=>{
+    let dx=e.clientX-cx,dy=e.clientY-cy;const l=Math.hypot(dx,dy);
+    if(l>R){dx*=R/l;dy*=R/l}
+    kn.style.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)';
+    if(l<DEAD){seaSendIntent(0,0);return}
+    const d=SeaView.dirToWorld(dx,dy); // screen direction -> sailing direction in the isometric world
+    seaSendIntent(d.mx,d.my)};
+  st.addEventListener('pointerdown',e=>{
+    if(seaStickId!==null)return;e.preventDefault();e.stopPropagation();
+    seaStickId=e.pointerId;try{st.setPointerCapture(e.pointerId)}catch(x){}
+    const r=st.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;
+    st.classList.add('on');move(e)});
+  st.addEventListener('pointermove',e=>{if(e.pointerId===seaStickId)move(e)});
+  const end=e=>{if(e.pointerId!==seaStickId)return;seaStickId=null;st.classList.remove('on');kn.style.transform='';seaSendIntent(0,0)};
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>st.addEventListener(ev,end));
+  if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{if(seaOpen()&&seaStickId===null)seaSendIntent(mx,my)}); // desktop: WASD / arrows
+  window.addEventListener('keydown',e=>{if((e.key===' '||e.code==='Space')&&seaOpen()){e.preventDefault();seaFire()}});
 })();
 
-// Emoji signal menu (rate-limited on server; visible to nearby sailors only)
-$('seaEmoji').onclick=e=>{e.stopPropagation();const m=$('seaEmojiMenu');if(m)m.style.display=m.style.display==='none'?'block':'none'};
-document.querySelectorAll('.seaEmo').forEach(btn=>{
-  btn.onclick=async e=>{e.stopPropagation();
-    const id=btn.getAttribute('data-e');
-    const m=$('seaEmojiMenu');if(m)m.style.display='none';
-    const r=await emitP('sea:emoji',{id},2000);
-    if(r&&r.err==='cooldown')toast('Signal cooling down');
-    else if(r&&r.err==='rate')toast('Too many signals — wait a bit');
-  };
-});
-socket.on('sea:state',d=>{if(d&&seaOpen())applySea(d)});
-socket.on('connect',()=>{if(seaOpen())setTimeout(()=>seaWatchdog(true),900)});
-socket.on('sea:emoji',d=>{
-  if(!SEA||!d)return;
-  if(SEA.others){
-    const o=SEA.others.find(x=>x.uid===d.uid);
-    if(o)o.emoji={id:d.id,until:d.until};
+// ---- attack (bottom right): tap to fire, the wedge shows the reload ----
+async function seaFire(){
+  if(!SEA||!seaOpen()||seaLeaving)return;
+  const btn=$('seaAttack'),now=performance.now();
+  if(now<seaAtkReady){btn.classList.remove('shake');void btn.offsetWidth;btn.classList.add('shake');return} // still reloading
+  let targetUid=null;
+  if(SEA.others&&SEA.others.length){const range=(SEA.mp&&SEA.mp.pvpRange)||90,near=SEA.others.find(o=>o.dist<=range);if(near)targetUid=near.uid}
+  const cfg=SEA.cfg||{};
+  seaAtkCd=targetUid?(cfg.pvpCooldownMs||900):(cfg.attackCooldownMs||700);
+  seaAtkReady=now+seaAtkCd; // optimistic reload; undone below if the server did not fire
+  svx('pulse');try{navigator.vibrate&&navigator.vibrate(10)}catch(e){}
+  const r=await emitP('sea:act',targetUid?{op:'attack',targetUid}:{op:'attack'},2000);
+  if(!r)return;
+  if(r.sea)applySea(r.sea);
+  if(r.err==='cooldown'){seaAtkReady=performance.now()+150;return}
+  if(!r.ok){seaAtkReady=0;if(r.err==='range')toast('Too far to engage');return} // nothing was fired: no reload
+  if(r.sunk)toast('⚔️ Ship sunk!');
+  else if(r.hit&&targetUid)toast('⚔️ Hit!');
+  else if(r.hit===false)svx('popup','💨');
+}
+$('seaAttack').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();seaFire()});
+
+// ---- emoji (bottom left): tap = open the ring, then tap an emoji · or press, drag onto an emoji and release ----
+const SEA_EMOJIS=['👋','😂','⚠️','⚔️','🤝','⛵','💎','🆘','👍','❤️'];
+let seaCloseEmo=()=>{};
+(function(){
+  const btn=$('seaEmoBtn'),ring=$('seaEmoRing'),box=$('seaEmoItems'),hub=$('seaEmoHub');if(!btn||!ring)return;
+  let ids=[],pos=[],hot=-1,down=null;
+  const list=()=>(SEA&&SEA.mp&&SEA.mp.emojis&&SEA.mp.emojis.length)?SEA.mp.emojis:SEA_EMOJIS;
+  function open(){
+    ids=list().slice();const W=window.innerWidth,H=window.innerHeight,R=Math.round(Math.min(90,Math.max(68,W*0.24)));
+    const b=btn.getBoundingClientRect(),bx=b.left+b.width/2,by=b.top+b.height/2,d=R+62; // ring centre: up and to the right of the button, always fully on screen
+    const cx=Math.max(R+32,Math.min(W-R-32,bx+d*0.64)),cy=Math.max(R+84,Math.min(H-R-26,by-d*0.77));
+    ring.style.setProperty('--cx',cx+'px');ring.style.setProperty('--cy',cy+'px');
+    hub.style.left=cx+'px';hub.style.top=cy+'px';hub.textContent='😊';
+    box.innerHTML='';pos=[];hot=-1;
+    ids.forEach((id,i)=>{
+      const a=(-90+i*(360/ids.length))*Math.PI/180,x=cx+Math.cos(a)*R,y=cy+Math.sin(a)*R;pos.push([x,y]);
+      const el=document.createElement('div');el.className='ei';el.dataset.i=i;el.textContent=id;
+      el.style.left=x+'px';el.style.top=y+'px';el.style.transitionDelay=(i*14)+'ms';box.appendChild(el)});
+    ring.classList.add('open');ring.offsetWidth; // reflow so the pop-in transition runs
   }
-  seaPaint();
-});
+  function close(){ring.classList.remove('open');hot=-1;down=null}
+  seaCloseEmo=close;
+  function hover(e){
+    let best=-1,bd=44;
+    for(let i=0;i<pos.length;i++){const dd=Math.hypot(e.clientX-pos[i][0],e.clientY-pos[i][1]);if(dd<bd){bd=dd;best=i}}
+    if(best!==hot){hot=best;box.childNodes.forEach((n,i)=>n.classList.toggle('hot',i===best));hub.textContent=best>=0?ids[best]:'😊'}}
+  async function send(id){
+    const cdMs=(SEA&&SEA.mp&&SEA.mp.emojiCooldownMs)||1200;
+    if(Date.now()-seaEmoAt<cdMs){toast('Signal cooling down');return}
+    seaEmoAt=Date.now();
+    svx('showSelfEmoji',id,(SEA&&SEA.mp&&SEA.mp.emojiTtlMs)||2500); // my own boat shows it immediately
+    try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}
+    const r=await emitP('sea:emoji',{id},2000);
+    if(r&&r.ok)return;
+    svx('clearSelfEmoji');seaEmoAt=0; // the server did not accept it: take the bubble back
+    if(r&&r.err==='cooldown'){seaEmoAt=Date.now();toast('Signal cooling down')}
+    else if(r&&(r.err==='rate'||r.err==='busy'))toast('Too many signals — wait a bit');
+    else if(!r)toast('No signal — check your connection');
+  }
+  btn.addEventListener('pointerdown',e=>{
+    e.preventDefault();e.stopPropagation();
+    if(ring.classList.contains('open')){close();return}
+    open();down={id:e.pointerId,t:performance.now(),x:e.clientX,y:e.clientY,moved:false};
+    try{btn.setPointerCapture(e.pointerId)}catch(x){}
+    hover(e)});
+  btn.addEventListener('pointermove',e=>{
+    if(!down||e.pointerId!==down.id)return;
+    if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>14)down.moved=true;
+    hover(e)});
+  btn.addEventListener('pointerup',e=>{
+    if(!down||e.pointerId!==down.id)return;
+    const d=down;down=null;
+    if(hot>=0&&(d.moved||performance.now()-d.t>280)){const id=ids[hot];close();send(id)} // press-drag-release on an emoji
+    else if(!d.moved&&performance.now()-d.t<=350){/* quick tap: leave the ring open and let the player tap an emoji */}
+    else close()});
+  btn.addEventListener('pointercancel',e=>{if(down&&e.pointerId===down.id)close()});
+  ring.addEventListener('pointerdown',e=>{ // tap mode: tap an emoji to send it, tap anywhere else to close
+    if(down)return;e.preventDefault();e.stopPropagation();
+    const it=e.target.closest&&e.target.closest('.ei');
+    if(it){const id=ids[+it.dataset.i];close();send(id)}else close()});
+})();
+
+// ---- server events ----
+socket.on('sea:state',d=>{if(d&&seaOpen()&&!seaLeaving)applySea(d)});
+socket.on('connect',()=>{if(seaOpen())setTimeout(()=>seaWatchdog(true),400)}); // re-attach the voyage to the new socket right after a reconnect
+window.addEventListener('online',()=>{if(seaOpen())seaWatchdog(true)});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&seaOpen()){seaSendIntent(0,0);setTimeout(()=>seaWatchdog(true),200)}});
+socket.on('sea:emoji',d=>{ // others' emojis normally arrive inside the next snapshot; this just makes them show a frame sooner
+  if(!SEA||!d||!SEA.others)return;
+  const o=SEA.others.find(x=>x.uid===d.uid);if(o)o.emoji={id:d.id,until:d.until}});
 socket.on('sea:event',d=>{
   if(!d)return;
-  if(d.sea)applySea(d.sea);
-  if(d.t==='pvp_sunk')toast('💥 Your ship was sunk by '+(d.by||'a sailor')+'!');
-  else if(d.t==='pvp_hit')toast('⚔️ Hit by '+(d.by||'a sailor')+'!');
+  if(d.sea&&seaOpen())applySea(d.sea);
+  if(d.t==='pvp_hit')toast('⚔️ Hit by '+(d.by||'a sailor')+'!');
 });
+socket.on('sea:sunk',d=>{ // the server already ended the voyage: health 0, cooldown running
+  if(!seaOpen()&&!SEA)return;
+  seaLeaving=true;
+  toast('💥 Your ship was sunk by '+((d&&d.by)||'a sailor')+'!');
+  seaToIsland('💥 Your boat was sunk — repairs take '+Math.round(((d&&d.cooldownMs)||30000)/1000)+' s.');
+  seaApplyReturn(d);seaLeaving=false});
 socket.on('sea:presence',d=>{
   if(!d||!seaOpen())return;
   if(d.op==='join')toast('⛵ '+(d.name||'Sailor')+' set sail nearby');
