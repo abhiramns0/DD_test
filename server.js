@@ -56,6 +56,10 @@ async function seaSaveNow(uid,slot){
 function seaEnd(uid,slot,now,o){
   o=o||{};
   const p=slot.session.player,r=Sea.returnHome(slot.session);
+  if(o.sunk&&p){
+    // leave a visible wreck so every sailor sees the boat drown and can loot it
+    try{Sea.addPlayerWreck(uid,p.x,p.y,1)}catch(e){}
+  }
   seaStoreHp(uid,o.sunk?0:p.hp,now);
   if(o.cooldown||o.sunk)seaCooldown.set(uid,now+Sea.CFG.seaCooldownMs);
   if(slot.saveTimer){clearTimeout(slot.saveTimer);slot.saveTimer=0}
@@ -350,6 +354,20 @@ const PORT=process.env.PORT||3000;
 setInterval(()=>{
   const now=Date.now(),dt=Math.min(0.1,Math.max(0.001,(now-last)/1000));last=now;
   const voy=seaVoyagerList();
+  // shared world (NPCs, wildlife, collectables) ticks once; players chase nearest sailor
+  const playerPositions=[];
+  for(const v of voy)if(v&&v.player&&v.player.alive)playerPositions.push({x:v.player.x,y:v.player.y});
+  try{Sea.tickShared(dt,now,playerPositions)}catch(e){console.error('[sea] shared',e.message)}
+  // soft boat-vs-boat collisions between living sailors
+  {const live=[];
+    for(const [uid,slot] of seaSessions){
+      if(slot&&slot.session&&slot.session.status==='sailing'&&slot.session.player&&slot.session.player.alive)
+        live.push(slot.session.player)}
+    for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
+      const a=live[i],b=live[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||0.001,r=Sea.CFG.boatRadius*2;
+      if(d>=r)continue;
+      const o=(r-d)*0.5,nx=dx/d,ny=dy/d;
+      a.x-=nx*o;a.y-=ny*o;b.x+=nx*o;b.y+=ny*o}}
   for(const [uid,slot] of seaSessions){
     try{
       if(!slot||!slot.session||slot.session.status!=='sailing')continue;
@@ -358,6 +376,10 @@ setInterval(()=>{
         if(r.ok)Promise.resolve(island.saveSea(uid,r.discoveries)).catch(()=>{});
         continue}
       Sea.tick(slot.session,dt,now);
+      // if the player was sunk by crocodile / NPC contact this frame, end the voyage
+      if(slot.session.player&&!slot.session.player.alive){
+        seaSink(uid,slot,null,now).catch(e=>console.error('[sea] contact sink',e.message));
+        continue}
       if(slot.session.dirty){slot.session.dirty=false;seaQueueSave(uid,slot)}
       if(slot.sockId){
         const sock=io.sockets.sockets.get(slot.sockId);
