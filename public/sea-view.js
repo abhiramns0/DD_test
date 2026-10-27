@@ -29,8 +29,8 @@
   let popups=[];                          // floating '+1 💎' texts: {x,y,txt,t0}
   let homeScr=null;                       // where the home island is on screen right now (for the floating DOCK button)
   const trails=new Map();                 // key -> [{x,y,t}] boat wake trails
-  const TRAIL_MAX=28;
-  const TRAIL_MS=1800;
+  const TRAIL_MAX=48;
+  const TRAIL_MS=2400;
 
   // ---------- projection ----------
   function metrics(canvas){
@@ -76,11 +76,15 @@
 
   function stepEntities(dt){
     const s=target;if(!s)return;
-    const k=1-Math.exp(-dt*14);
-    const ex=Math.min(0.25,Math.max(0,(performance.now()-lastStateAt)/1000)); // seconds since this snapshot arrived
+    // Smooth follow: higher rate + velocity extrapolation so joystick feels 1:1
+    const k=1-Math.exp(-dt*18);
+    const age=Math.max(0,(performance.now()-lastStateAt)/1000);
+    const ex=Math.min(0.18,age); // cap prediction so we never overshoot hard
     if(s.player){
       if(!disp.player)disp.player={};
-      ease(disp.player,(s.player.x||0)+(s.player.vx||0)*ex,(s.player.y||0)+(s.player.vy||0)*ex,s.player.facing||0,k,400);
+      const px=(s.player.x||0)+(s.player.vx||0)*ex;
+      const py=(s.player.y||0)+(s.player.vy||0)*ex;
+      ease(disp.player,px,py,s.player.facing||0,k,220);
     }
     const seen=new Set();
     const feed=(arr,kind,idf)=>{
@@ -101,15 +105,15 @@
       if(!cam.init){cam.x=disp.player.x;cam.y=disp.player.y;cam.init=true}
       else{const kc=1-Math.exp(-dt*20);cam.x+=(disp.player.x-cam.x)*kc;cam.y+=(disp.player.y-cam.y)*kc}
     }
-    // boat wake trails
+    // boat wake trails (wider, denser, more realistic foam)
     const nowT=performance.now();
     const pushTrail=(key,x,y,vx,vy)=>{
       const spd=Math.hypot(vx||0,vy||0);
-      if(spd<12)return;
+      if(spd<8)return;
       let arr=trails.get(key);if(!arr){arr=[];trails.set(key,arr)}
       const last=arr[arr.length-1];
-      if(last&&Math.hypot(x-last.x,y-last.y)<10)return;
-      arr.push({x,y,t:nowT});
+      if(last&&Math.hypot(x-last.x,y-last.y)<6)return;
+      arr.push({x,y,t:nowT,spd});
       while(arr.length>TRAIL_MAX||(arr.length&&nowT-arr[0].t>TRAIL_MS))arr.shift();
     };
     if(disp.player)pushTrail('self',disp.player.x,disp.player.y,s.player&&s.player.vx,s.player&&s.player.vy);
@@ -221,7 +225,7 @@
       g.clearRect(0,0,m.w,m.h);
       water(g,m,t);
 
-      // boat wake trails (behind everything else in the water)
+      // boat wake trails (behind everything else in the water) — wider layered foam
       {const nowT=performance.now();
         g.lineCap='round';g.lineJoin='round';
         for(const arr of trails.values()){
@@ -230,8 +234,14 @@
             const a=arr[i-1],b=arr[i],age=(nowT-b.t)/TRAIL_MS;
             if(age>=1)continue;
             const pa=P(a.x,a.y,m),pb=P(b.x,b.y,m);
-            g.strokeStyle='rgba(200,238,248,'+(0.35*(1-age)).toFixed(3)+')';
-            g.lineWidth=Math.max(1.5,m.c*(4.5-age*3));
+            const fade=1-age;
+            // outer soft foam
+            g.strokeStyle='rgba(220,245,255,'+(0.22*fade).toFixed(3)+')';
+            g.lineWidth=Math.max(4,m.c*(14-age*9));
+            g.beginPath();g.moveTo(pa[0],pa[1]);g.lineTo(pb[0],pb[1]);g.stroke();
+            // inner brighter core
+            g.strokeStyle='rgba(255,255,255,'+(0.38*fade).toFixed(3)+')';
+            g.lineWidth=Math.max(2,m.c*(7-age*4.5));
             g.beginPath();g.moveTo(pa[0],pa[1]);g.lineTo(pb[0],pb[1]);g.stroke();
           }
         }
@@ -252,14 +262,56 @@
       label(g,'HOME',hp[0],hp[1]+hry*0.35,Math.round(13*m.A),'#fff');
       homeScr={x:hp[0],y:hp[1]-m.c*38,w:m.w,h:m.h};
 
+      // racing events: glowing pulsating circle + race flag
+      for(const race of(snap.races||[])){
+        const rp=P(race.x,race.y,m),[rrx,rry]=ER(race.r||200,m);
+        const pulse=0.55+0.45*Math.sin(t*3.2);
+        g.save();
+        g.strokeStyle='rgba(255,210,60,'+(0.35+0.4*pulse).toFixed(3)+')';
+        g.lineWidth=Math.max(3,m.c*4);
+        g.setLineDash([m.c*12,m.c*8]);
+        g.beginPath();g.ellipse(rp[0],rp[1],rrx,rry,0,0,6.283);g.stroke();
+        g.setLineDash([]);
+        // inner glow ring
+        g.strokeStyle='rgba(255,255,255,'+(0.15+0.25*pulse).toFixed(3)+')';
+        g.lineWidth=Math.max(2,m.c*2);
+        g.beginPath();g.ellipse(rp[0],rp[1],rrx*0.92,rry*0.92,0,0,6.283);g.stroke();
+        // soft fill
+        g.fillStyle='rgba(255,200,40,'+(0.06+0.05*pulse).toFixed(3)+')';
+        g.beginPath();g.ellipse(rp[0],rp[1],rrx,rry,0,0,6.283);g.fill();
+        // race flag in center
+        g.font=Math.round(36*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+        g.globalAlpha=0.9;g.fillText('🏁',rp[0],rp[1]-m.c*6);g.globalAlpha=1;
+        label(g,'RACE',rp[0],rp[1]+m.c*18,Math.round(12*m.A),'#ffe9a0');
+        // checkpoints for active race
+        const prog=snap.raceProgress;
+        if(prog&&prog.raceId===race.id){
+          (race.checkpoints||[]).forEach((cp,i)=>{
+            const cpP=P(cp.x,cp.y,m),[cx,cy]=ER(cp.r||60,m);
+            const done=i<prog.nextCp,next=i===prog.nextCp;
+            g.strokeStyle=done?'rgba(80,220,120,.55)':(next?'rgba(255,220,60,.9)':'rgba(255,255,255,.25)');
+            g.lineWidth=next?Math.max(2.5,m.c*2.5):Math.max(1.5,m.c*1.5);
+            g.beginPath();g.ellipse(cpP[0],cpP[1],cx,cy,0,0,6.283);g.stroke();
+            if(next){g.font=Math.round(18*m.c)+'px sans-serif';g.fillText(cp.finish?'🏁':String(i+1),cpP[0],cpP[1])}
+          });
+        }
+        g.restore();
+      }
+
       // entities, painter-sorted back to front (iso depth = x+y)
       const list=[],bubbles=[],nowMs=performance.now(),fs=Math.round(12*Math.max(.9,m.A));
       for(const tr of(snap.treasures||[]))list.push({d:tr.x+tr.y,f:()=>{
         const p=P(tr.x,tr.y,m);g.font=Math.round(24*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.fillText(tr.kind==='chest'?'💎':'📦',p[0],p[1]+Math.sin(t*2+tr.x)*m.c*2)}});
       for(const wk of(snap.wrecks||[]))list.push({d:wk.x+wk.y,f:()=>{
+        const ageMs=wk.at? (nowMs-(wk.at>1e12?wk.at:nowMs)):0; // server ms or relative
+        // skulls vanish after ~10s (client fade in last 1.5s)
+        const ttl=(snap.mp&&snap.mp.wreckTtlMs)||10000;
+        const life=wk.at?(Date.now()-(wk.at||0)):0;
+        if(life>ttl)return;
+        const fade=life>ttl-1500?Math.max(0,(ttl-life)/1500):1;
         const p=P(wk.x,wk.y,m);
-        g.globalAlpha=0.75;g.font=Math.round(28*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+        g.globalAlpha=0.8*fade;g.font=Math.round(28*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.fillText('💀',p[0],p[1]);
         if(wk.loot){g.font=Math.round(16*m.c)+'px sans-serif';g.fillText('💎',p[0]+12*m.c,p[1]-14*m.c)}
         g.globalAlpha=1}});
@@ -290,16 +342,22 @@
       for(const pp of popups){const a=(nowMs-pp.t0)/1000,p=P(pp.x,pp.y,m);
         g.globalAlpha=1-a*a;label(g,pp.txt,p[0],p[1]-30*m.c-a*46,Math.round(17*Math.max(.9,m.A)),'#fff3b0');g.globalAlpha=1}
 
-      // arrow pointing home when it is off screen
+      // home navigation: light-opacity anchor emoji pointing toward home island + distance
       if(snap.player&&!snap.nearHome&&disp.player){
         const dist=Math.hypot(disp.player.x,disp.player.y)||1;
         const ang=Math.atan2(hp[1]-m.oy,hp[0]-m.ox);
         const onScreen=hp[0]>40&&hp[0]<m.w-40&&hp[1]>40&&hp[1]<m.h-40;
         if(!onScreen){
           const edge=Math.min(m.w,m.h)*0.36,ix=m.ox+Math.cos(ang)*edge,iy=m.oy+Math.sin(ang)*edge;
-          g.save();g.translate(ix,iy);g.rotate(ang);g.fillStyle='rgba(255,255,255,.7)';
-          g.beginPath();g.moveTo(16,0);g.lineTo(-10,-11);g.lineTo(-10,11);g.closePath();g.fill();g.restore();
-          label(g,'HOME '+Math.round(dist),ix,iy+26,11,'#fff');
+          g.save();g.translate(ix,iy);g.rotate(ang);
+          g.globalAlpha=0.55;
+          g.font=Math.round(28*Math.max(0.9,m.A))+'px sans-serif';
+          g.textAlign='center';g.textBaseline='middle';
+          g.fillText('⚓',0,0);
+          g.restore();
+          g.globalAlpha=0.7;
+          label(g,Math.round(dist)+' m',ix,iy+22,11,'#e8f6ff');
+          g.globalAlpha=1;
         }
       }
     }catch(e){try{console.error('[SeaView]',e)}catch(x){}}
