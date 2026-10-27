@@ -85,9 +85,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#d9f1fb 55%,#9fd3e8);box-shadow:0 4px 0 rgba(10,40,60,.35);pointer-events:none;transition:transform .12s ease-out}
 #seaStick.on #seaKnob{transition:none}
 /* attack: tap to fire, the dark wedge is the reload */
-#sea button.sbtn#seaAttack{position:absolute;z-index:4;right:calc(env(safe-area-inset-right,0px) + 18px);bottom:calc(env(safe-area-inset-bottom,0px) + 36px);width:86px;height:86px;border-radius:50%;font-size:36px;color:#fff;overflow:hidden;background:radial-gradient(circle at 35% 28%,#ffa174,#ff5a3c 60%,#d63a24);box-shadow:0 5px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7)}
-#seaAttack .cd{position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(10,30,45,.66) calc(var(--cd,0)*360deg),transparent 0);pointer-events:none}
-#seaAttack .ic{position:relative;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3))}
+#sea button.sbtn#seaAttack{position:absolute;z-index:4;right:calc(env(safe-area-inset-right,0px) + 18px);bottom:calc(env(safe-area-inset-bottom,0px) + 36px);width:86px;height:86px;border-radius:50%;font-size:36px;color:#fff;overflow:hidden;background:radial-gradient(circle at 35% 28%,#ffa174,#ff5a3c 60%,#d63a24);box-shadow:0 5px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;line-height:1}
+#seaAttack .cd{position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(10,30,45,.66) calc(var(--cd,0)*360deg),transparent 0);pointer-events:none;display:block;border:0;margin:0;padding:0;font-style:normal}
+#seaAttack .ic{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;line-height:1;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3));pointer-events:none}
 #seaAttack.cool{filter:saturate(.5)}
 #seaAttack.rdy{animation:seaRdy 1s ease-in-out infinite}
 @keyframes seaRdy{50%{box-shadow:0 5px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7),0 0 22px 7px rgba(255,205,120,.8)}}
@@ -352,7 +352,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <!-- bottom: emoji (left) · joystick (middle) · attack (right) -->
   <button type="button" id="seaEmoBtn" class="sbtn" aria-label="Send an emoji">😊</button>
   <div id="seaStick" aria-label="Steering joystick"><div id="seaKnob"></div></div>
-  <button type="button" id="seaAttack" class="sbtn" aria-label="Attack"><i class="cd"></i><span class="ic">⚔️</span></button>
+  <button type="button" id="seaAttack" class="sbtn" aria-label="Attack"><span class="cd"></span><span class="ic">⚔️</span></button>
 
   <!-- emoji radial menu -->
   <div id="seaEmoRing"><div id="seaEmoShade"></div><div id="seaEmoItems"></div><div id="seaEmoHub">😊</div></div>
@@ -1321,20 +1321,21 @@ function specTarget(me_){const c=[...players.values()].filter(q=>q.id!==me&&(q.s
 // ---- objective text
 function objText(me_){
  const s=myS(),n=CFG.need;
- if(me_.status==='spectator'){const t=specTarget(me_);return 'SPECTATING'+(t!==me_&&t.name?' '+t.name.toUpperCase():'')}
+ if(me_.status==='spectator'){const t=specTarget(me_);return '👀 '+(t!==me_&&t.name?t.name.toUpperCase():'SPEC')}
  {const dd=[...players.values()].find(q=>q.status==='failed'&&q.tid===myTid&&q.id!==me&&q.rvLeft>0&&performance.now()-q.rvAt<1200);if(dd&&me_.status==='alive')return '🩹 REVIVE '+dd.name.toUpperCase()+' ('+Math.ceil(dd.rvLeft/1000)+'s)'}
- if(st==='COUNTDOWN')return CFG.pvp?'GET READY':'GET READY';
- if(mode==='coop'&&!isSolo){const sm=myS();if(sm&&sm.dep&&!sm.ln){const n=Math.max(0,Math.ceil((sm.dep-nowS())/1000));if(me_.status==='boarded')return 'LEAVING IN '+n+'s — STEER OFF';if(me_.status==='alive')return '🚀 LEAVES IN '+n+'s — BOARD!'}if(me_.status==='boarded')return 'LAUNCHING!'}
+ if(st==='COUNTDOWN')return 'GET READY';
+ if(mode==='coop'&&!isSolo){const sm=myS();if(sm&&sm.dep&&!sm.ln){const n=Math.max(0,Math.ceil((sm.dep-nowS())/1000));if(me_.status==='boarded')return 'LEAVE IN '+n+'s';if(me_.status==='alive')return '🚀 BOARD! '+n+'s'}if(me_.status==='boarded')return 'LAUNCHING!'}
  if(me_.status==='boarded'||me_.status==='escaped')return 'LAUNCHING!';
- if(me_.status==='failed'){if(me_.rvLeft>0&&performance.now()-me_.rvAt<1200)return '🐊 EATEN — WAIT FOR REVIVE ('+Math.ceil(me_.rvLeft/1000)+'s)';return mode==='tourney'?'YOUR ISLAND SANK':mode==='coop'&&!isSolo?'ELIMINATED':'YOU DROWNED'}
+ if(me_.status==='failed'){if(me_.rvLeft>0&&performance.now()-me_.rvAt<1200)return '🐊 WAIT REVIVE ('+Math.ceil(me_.rvLeft/1000)+'s)';return mode==='tourney'?'ISLAND SANK':mode==='coop'&&!isSolo?'ELIMINATED':'DROWNED'}
  if(!s)return '';
- if(s.dead&&!s.done)return 'STATION SANK — SURVIVE!';
- if(s.done)return 'BOARD YOUR '+VN[s.kind]+'!';
+ if(s.dead&&!s.done)return 'SURVIVE!';
+ if(s.done)return 'BOARD '+VN[s.kind]+'!';
  const has=k=>s[k]+inv[k]>=n[k],near=Math.hypot(me_.x-s.x,me_.y-s.y)<CFG.buildR;
- if(has('w')&&has('l')&&has('c'))return near?'BUILD YOUR '+VN[s.kind]+'!':'GO TO STATION!';
- if(CFG.energy&&n.c&&!has('c')&&has('w')&&has('l')){const left=CFG.duration*CFG.energy.energySpawnStart-el;return left>0?EN.ic+' '+EN.name.toUpperCase()+' APPEARS IN '+Math.ceil(left)+'s':EN.ic+' GRAB THE '+EN.name.toUpperCase()+' FIRST!'}
- if(s.w+s.l+s.c+inv.w+inv.l+inv.c===0)return mode==='coop'?'GATHER WOOD & LEAVES':mode==='last'?'BUILD & ESCAPE FIRST!':'BUILD & ESCAPE!';
- return CFG.pvp?'COLLECT, BUILD OR PUSH!':'KEEP COLLECTING';
+ if(has('w')&&has('l')&&has('c'))return near?'BUILD '+VN[s.kind]+'!':'GO STATION!';
+ if(CFG.energy&&n.c&&!has('c')&&has('w')&&has('l')){const left=CFG.duration*CFG.energy.energySpawnStart-el;return left>0?EN.ic+' IN '+Math.ceil(left)+'s':EN.ic+' GRAB '+EN.name.toUpperCase()+'!'}
+ if(s.w+s.l+s.c+inv.w+inv.l+inv.c===0)return mode==='coop'?'GATHER!':mode==='last'?'BUILD FIRST!':'BUILD!';
+ // idle / keep-collecting: hide objective to avoid permanent on-screen text
+ return '';
 }
 // ---- HUD: inventory (what to collect, have/remaining) is separate from build progress (bars, % of the vehicle)
 const RC={w:{ic:'🪵',c:'#c98a52'},l:{ic:'🍃',c:'#4fbf62'},c:{ic:EN.ic,c:EN.col}};
@@ -1348,7 +1349,7 @@ function hud(me_,s,now){
   $('vn').textContent=VN[s.kind]||'';
   $('bp').textContent=Math.round(prog(s)*100)+'%';
   $('bbars').innerHTML=ks.map(k=>`<div class="bb"><i>${RC[k].ic}</i><u><s style="width:${s.done?100:Math.round(100*s[k]/n[k])}%;background:${RC[k].c}"></s></u><em>${s.done?100:Math.round(100*s[k]/n[k])}%</em></div>`).join('')}
- const ot=objText(me_),oe=$('obj');if(oe.textContent!==ot)oe.textContent=ot;if(!ot)oe.style.display='none';
+ const ot=objText(me_),oe=$('obj');if(oe.textContent!==ot)oe.textContent=ot;oe.style.display=ot?'':'none';
  if(CFG.comp&&!s.done&&!s.dead&&ACTIVE.includes(st)&&r<Math.hypot(s.x,s.y)+75&&now-lastWarn>1000){lastWarn=now;snd(300,.15,'square',.05)}
 }
 // ---- update
@@ -1746,14 +1747,19 @@ function seaUpdateHud(){
   if(tx)tx.textContent=pct+'%';
   if(box)box.classList.toggle('low',pct<=25);
   const cd=Math.round(((SEA.cfg&&SEA.cfg.seaCooldownMs)||30000)/1000);
-  seaSay(SEA.nearHome?'🏠 Home island — tap DOCK to land (no cooldown)':'Joystick to sail · ⚔️ attack · ⚓ Leave has a '+cd+' s cooldown');
+  seaSay(SEA.nearHome?'🏠 Tap DOCK to land':'⚔️ Attack · ⚓ Leave ('+cd+'s cd)');
 }
 function seaHandleEvents(evs){
   (evs||[]).forEach(e=>{
-    if(e.t==='treasure')svx('popup','+'+(e.value||1)+' 💎'); // collected automatically when you sail close
-    else if(e.t==='explore')toast('🏝️ Discovered '+e.name);
-    else if(e.t==='kill')toast(e.loot?'⚔️ Wreck sunk — sail over it to loot':'⚔️ Target sunk');
+    if(e.t==='treasure')svx('popup','+'+(e.value||1)+' 💎');
+    else if(e.t==='explore')toast('🏝️ '+e.name);
+    else if(e.t==='kill')toast(e.loot?'⚔️ Sunk — loot it':'⚔️ Sunk');
     else if(e.t==='loot')svx('popup','+'+(e.gained||1)+' 💎');
+    else if(e.t==='croc_hit')toast('🐊 Hit!');
+    else if(e.t==='npc_hit')toast('⛵ Rammed!');
+    else if(e.t==='croc_sink'||e.t==='npc_sink')toast('💥 Boat destroyed!');
+    else if(e.t==='hit')svx('popup','💥');
+    else if(e.t==='miss')svx('popup','💨');
   });
 }
 
@@ -1976,7 +1982,7 @@ async function seaFire(){
 $('seaAttack').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();seaFire()});
 
 // ---- emoji (bottom left): tap = open the ring, then tap an emoji · or press, drag onto an emoji and release ----
-const SEA_EMOJIS=['👋','😂','⚠️','⚔️','🤝','⛵','💎','🆘','👍','❤️'];
+const SEA_EMOJIS=['👋','😂','🏳️','⚔️','🤝','⛵','💎','🆘','👍','❤️'];
 let seaCloseEmo=()=>{};
 (function(){
   const btn=$('seaEmoBtn'),ring=$('seaEmoRing'),box=$('seaEmoItems'),hub=$('seaEmoHub');if(!btn||!ring)return;
