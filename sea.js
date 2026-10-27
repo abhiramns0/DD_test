@@ -224,13 +224,15 @@ function spawnRaces(seed) {
     // finish is last checkpoint, slightly larger
     cps[cps.length - 1].r = CFG.raceCheckpointR * 1.25;
     cps[cps.length - 1].finish = true;
+    const names = ['Coral Circuit', 'Storm Loop', 'Treasure Run', 'Gale Trail'];
     out.push({
       id: 'race_' + i,
+      name: names[i % names.length],
       x, y,
       r: CFG.raceRadius,
       checkpoints: cps,
       entrants: {}, // uid -> { startAt, nextCp, finishedAt, name }
-      board: [] // finished: { uid, name, ms }
+      board: [] // best times only: { uid, name, ms }
     });
   }
   return out;
@@ -791,6 +793,7 @@ function view(session, opts) {
       worldR: CFG.worldR,
       homeR: CFG.homeR,
       returnR: CFG.returnR,
+      speed: CFG.speed,
       attackRange: CFG.attackRange,
       attackCooldownMs: CFG.attackCooldownMs,
       pvpCooldownMs: CFG.pvpCooldownMs,
@@ -892,6 +895,26 @@ function teamAccept(uid, teamId, name) {
   return { ok: true, teamId, leader: team.leader, members: [...team.members] };
 }
 
+function teamDecline(uid, teamId) {
+  ensureShared();
+  if (teamId) {
+    const team = SHARED.teams.get(teamId);
+    if (!team) return { ok: false, err: 'no_team' };
+    if (!team.invites.has(uid)) return { ok: false, err: 'no_invite' };
+    team.invites.delete(uid);
+    // dissolve empty provisional teams (leader alone, no other members, no invites)
+    if (team.members.size <= 1 && team.invites.size === 0) {
+      // keep team if leader is still in it and sailing; only dissolve if truly empty of invites and single
+    }
+    return { ok: true };
+  }
+  // decline all pending invites
+  for (const team of SHARED.teams.values()) {
+    if (team.invites.has(uid)) team.invites.delete(uid);
+  }
+  return { ok: true };
+}
+
 function teamLeave(uid) {
   ensureShared();
   const team = getTeamFor(uid);
@@ -943,15 +966,31 @@ function raceTickPlayer(uid, player, now) {
       if (ent.nextCp >= race.checkpoints.length) {
         ent.finishedAt = now;
         const ms = now - ent.startAt;
-        race.board.push({ uid, name: ent.name, ms });
+        // keep only each player's best (lowest) time
+        const prev = race.board.findIndex((b) => b.uid === uid);
+        if (prev >= 0) {
+          if (ms < race.board[prev].ms) race.board[prev] = { uid, name: ent.name, ms };
+        } else {
+          race.board.push({ uid, name: ent.name, ms });
+        }
         race.board.sort((a, b) => a.ms - b.ms);
         if (race.board.length > 20) race.board.length = 20;
-        return { finished: true, ms, place: race.board.findIndex((b) => b.uid === uid) + 1 };
+        return { finished: true, ms, place: race.board.findIndex((b) => b.uid === uid) + 1, name: race.name };
       }
       return { checkpoint: ent.nextCp };
     }
   }
   return null;
+}
+
+function raceAbandon(uid) {
+  ensureShared();
+  for (const race of SHARED.races || []) {
+    const ent = race.entrants[uid];
+    if (ent && !ent.finishedAt) {
+      delete race.entrants[uid];
+    }
+  }
 }
 
 function racesNear(x, y) {
@@ -960,12 +999,13 @@ function racesNear(x, y) {
     .filter((r) => Math.hypot(r.x - x, r.y - y) < CFG.aoiR + r.r)
     .map((r) => ({
       id: r.id,
+      name: r.name || r.id,
       x: r1(r.x),
       y: r1(r.y),
       r: r.r,
       checkpoints: r.checkpoints.map((c) => ({ x: r1(c.x), y: r1(c.y), r: c.r, finish: !!c.finish })),
       board: r.board.slice(0, 10),
-      entrants: Object.keys(r.entrants).length
+      entrants: Object.keys(r.entrants).filter((u) => r.entrants[u] && !r.entrants[u].finishedAt).length
     }));
 }
 
@@ -1080,9 +1120,11 @@ module.exports = {
   getTeamFor,
   teamInvite,
   teamAccept,
+  teamDecline,
   teamLeave,
   teamInfo,
   raceJoin,
   raceTickPlayer,
+  raceAbandon,
   racesNear
 };
