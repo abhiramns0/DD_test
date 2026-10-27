@@ -101,6 +101,16 @@ function create({pool=null,log=console,mem=new Map()}={}){
     s.voyages=s.voyages|0;s.treasureCount=s.treasureCount|0;
     return{ok:true,doc:next};
   }
+  // getSea = read the saved sea discoveries / gem total WITHOUT writing anything (used when a voyage starts).
+  async function getSea(uid){
+    if(!validUid(uid))return{ok:false,err:'bad_id'};
+    try{
+      let row=await read(uid);
+      if(!row){await insert(uid,I.createDefault());row=await read(uid)}
+      if(!row)return{ok:false,err:'unavailable'};
+      const p=pack(row);if(!p.ok)return p;
+      st.ok=true;return{ok:true,sea:p.doc.sea||{islets:[],treasures:[],voyages:0,treasureCount:0}}
+    }catch(e){return fail(e,'sea read')}}
   async function saveSea(uid,discoveries){
     if(!validUid(uid))return{ok:false,err:'bad_id'};
     try{
@@ -110,6 +120,7 @@ function create({pool=null,log=console,mem=new Map()}={}){
         if(!row)return{ok:false,err:'unavailable'};
         const p=pack(row);if(!p.ok)return p;
         const r=mergeSeaDiscoveries(p.doc,discoveries);if(!r.ok)return r;
+        if(JSON.stringify(r.doc)===JSON.stringify(p.doc)){st.ok=true;return{ok:true,island:I.view(p.doc,p.rev),sea:p.doc.sea||{islets:[],treasures:[],voyages:0,treasureCount:0}}} // nothing new: no database write
         const rev=await write(uid,r.doc,p.rev);
         if(rev){st.ok=true;return{ok:true,island:I.view(r.doc,rev),sea:r.doc.sea||{islets:[],treasures:[],voyages:0,treasureCount:0}}}
       }
@@ -128,6 +139,6 @@ function create({pool=null,log=console,mem=new Map()}={}){
       else{st.ok=true;log.log('[island] lb_islands found.')}}
     catch(e){fail(e,'startup check')}}
   const status=()=>({store:pool?'postgres':'memory',persistent:!!pool,ok:pool?st.ok:true,error:st.lastError});
-    return{load,act,grantXp,saveSea,remove,init,status};
+    return{load,act,grantXp,saveSea,getSea,remove,init,status};
 }
 module.exports={create};
