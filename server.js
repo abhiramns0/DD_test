@@ -1,7 +1,16 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const Sea=require('./sea'); // open-sea rules (pure) + multiplayer helpers
-const seaSessions=new Map(); // uid -> {session, lastTick, sockId, name, emoji, emojiUntil, emojiMeta}
+const SEA_PROTO=2; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
+const seaSessions=new Map(); // uid -> {session, sockId, name, emoji, emojiUntil, emojiMeta, proto, dropAt, saveTimer, saving, again}
+const seaVitals=new Map();   // uid -> {hp,at}  boat health at the moment the player left the sea; it keeps regenerating while away (computed lazily)
+const seaCooldown=new Map(); // uid -> timestamp: 'Leave Sea' / being sunk blocks sailing out again until then. Docking at home never sets it.
+const seaHpNow=(uid,now)=>{const max=Sea.CFG.playerHp,v=seaVitals.get(uid);if(!v)return max;return Math.min(max,v.hp+(now-v.at)/1000*max/Sea.CFG.regenSeconds)};
+const seaStoreHp=(uid,hp,now)=>seaVitals.set(uid,{hp:Math.max(0,Math.min(Sea.CFG.playerHp,hp)),at:now});
+const seaCooldownLeft=(uid,now)=>Math.max(0,(seaCooldown.get(uid)||0)-now);
+function seaVitalsPack(uid,now){
+  const slot=seaSessions.get(uid),live=slot&&slot.session&&slot.session.status==='sailing'?slot.session.player.hp:null;
+  return{hp:Math.round((live==null?seaHpNow(uid,now):live)*10)/10,maxHp:Sea.CFG.playerHp,regenPerSec:Sea.CFG.playerHp/Sea.CFG.regenSeconds}}
 function seaVoyagerList(){
   const list=[];
   for(const [uid,slot] of seaSessions){
@@ -15,10 +24,11 @@ function seaSlotFor(uid,s){
   const slot=seaSessions.get(uid);if(!slot)return null;
   if(slot.sockId!==s.id){slot.sockId=s.id;slot.dropAt=0}
   return slot}
-function seaPackFor(uid,slot,now){
-  const sess=slot.session;
-  const others=Sea.othersView(uid,sess.player.x,sess.player.y,seaVoyagerList(),now||Date.now());
-  return Sea.viewWithOthers(sess,others,now||Date.now())}
+// full=true -> includes the static world (islets, cfg). Sockets that did not announce proto>=2 always get full snapshots.
+function seaPackFor(uid,slot,now,voyagers,full){
+  const sess=slot.session,t=now||Date.now();
+  const others=Sea.othersView(uid,sess.player.x,sess.player.y,voyagers||seaVoyagerList(),t);
+  return Sea.viewWithOthers(sess,others,t,{full:!!full||(slot.proto|0)<2,proto:SEA_PROTO})}
 function seaEmitTo(uid,event,payload){
   const slot=seaSessions.get(uid);if(!slot||!slot.sockId)return;
   try{const sock=io.sockets.sockets.get(slot.sockId);if(sock)sock.emit(event,payload)}catch(e){}}
@@ -30,6 +40,37 @@ function seaBroadcastNearby(fromUid,event,payload,x,y){
     if(Math.hypot(p.x-x,p.y-y)>Sea.CFG.aoiR)continue;
     seaEmitTo(uid,event,payload);
   }}
+// Gems / discoveries are saved shortly after every pickup (not only when the voyage ends), so a closed tab, a dropped
+// connection or a server redeploy can no longer lose them. One save at a time per player; later changes are coalesced.
+function seaQueueSave(uid,slot){
+  if(!slot||slot.saveTimer)return;
+  slot.saveTimer=setTimeout(()=>{slot.saveTimer=0;seaSaveNow(uid,slot)},1200)}
+async function seaSaveNow(uid,slot){
+  if(slot.saving){slot.again=true;return}
+  slot.saving=true;
+  try{await island.saveSea(uid,Sea.packDiscoveries(slot.session))}catch(e){console.error('[sea] save',e.message)}
+  slot.saving=false;
+  if(slot.again){slot.again=false;seaQueueSave(uid,slot)}}
+// Ends a voyage on the server (dock, leave, sunk, or connection never came back). The boat's health is remembered so it keeps
+// regenerating; leaving / being sunk starts the sail-out cooldown.
+function seaEnd(uid,slot,now,o){
+  o=o||{};
+  const p=slot.session.player,r=Sea.returnHome(slot.session);
+  seaStoreHp(uid,o.sunk?0:p.hp,now);
+  if(o.cooldown||o.sunk)seaCooldown.set(uid,now+Sea.CFG.seaCooldownMs);
+  if(slot.saveTimer){clearTimeout(slot.saveTimer);slot.saveTimer=0}
+  seaSessions.delete(uid);
+  seaBroadcastNearby(null,'sea:presence',{op:'leave',uid},p.x,p.y);
+  return r}
+async function seaSink(uid,slot,byName,now){
+  const sock=slot.sockId?io.sockets.sockets.get(slot.sockId):null;
+  const r=seaEnd(uid,slot,now,{sunk:true});
+  let saved=null;try{if(r.ok)saved=await island.saveSea(uid,r.discoveries)}catch(e){}
+  if(sock)sock.emit('sea:sunk',{by:byName,cooldownMs:seaCooldownLeft(uid,Date.now()),vitals:seaVitalsPack(uid,Date.now()),island:saved&&saved.ok?saved.island:undefined})}
+async function seaFlushAll(){ // redeploy / shutdown: write every sailor's gems before the process exits
+  const jobs=[];
+  for(const [uid,slot] of seaSessions)if(slot&&slot.session&&slot.session.status==='sailing')jobs.push(Promise.resolve(island.saveSea(uid,Sea.packDiscoveries(slot.session))).catch(()=>{}));
+  await Promise.race([Promise.all(jobs),new Promise(r=>setTimeout(r,3000))])}
 
 const {Server}=require('socket.io');
 const {Room,CFG,MODES}=require('./game');
@@ -66,13 +107,14 @@ const srv=http.createServer((q,s)=>{
     if(e){s.statusCode=404;s.end('not found');return}
     if(rp==='/index.html'){const proto=String(q.headers['x-forwarded-proto']||'http').split(',')[0],origin=(process.env.PUBLIC_URL||'').replace(/\/+$/,'')||(proto+'://'+q.headers.host);b=Buffer.from(b.toString('utf8').split('%%ORIGIN%%').join(origin).split('%%SB_URL%%').join(auth.clientOk?auth.publicUrl:'').split('%%SB_KEY%%').join(auth.clientOk?auth.publicKey:''))} // SB_URL / SB_KEY are PUBLIC values (project URL + anon/publishable key) for the browser sign-in // absolute URLs for share previews (og:image)
     s.setHeader('Content-Type',MIME[path.extname(file)]||'application/octet-stream');
-    s.setHeader('Cache-Control',NOCACHE.has(rp)?'no-cache':rp.startsWith('/icons/')?'public, max-age=3600':'public, max-age=86400');
+    s.setHeader('Cache-Control',(NOCACHE.has(rp)||rp.endsWith('.js'))?'no-cache':rp.startsWith('/icons/')?'public, max-age=3600':'public, max-age=86400');
     if(rp==='/sw.js')s.setHeader('Service-Worker-Allowed','/');
     s.end(b)});
   const hit=findStatic(rel);
   if(hit)send(hit,rel);else if(!path.extname(rel))send(path.join(PUB,'index.html'),'/index.html');else{s.statusCode=404;s.end('not found')}
 });
-const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'}});
+// pingInterval/pingTimeout: a dead phone connection is noticed in ~20 s instead of ~45 s, and the idle keep-alive stops proxies dropping it.
+const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'},pingInterval:10000,pingTimeout:10000});
 
 // ---------- leaderboard: PostgreSQL (Supabase) via leaderboard.js. Credentials: DATABASE_URL (server environment only) ----------
 const board=require('./leaderboard').create(console);
@@ -102,7 +144,7 @@ const mkRoom=(opts)=>{const code=newCode(),socks=new Map();
     }).catch(()=>{})};
   if(MODES[opts.mode])rm.mode=opts.mode;if(opts.teamMode==='teams')rm.teamMode='teams';rooms.set(code,rm);return rm};
 io.on('connection',s=>{
-  let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0],isl:[0,0]};
+  let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0],isl:[0,0],sea:[0,0],seaAct:[0,0],emo:[0,0],sint:[0,0]};
   const lim=(k,max,perSec)=>{const b=bucket[k],t=Date.now();b[0]=Math.min(max,b[0]+(t-b[1])/1000*perSec);b[1]=t;if(b[0]<1)return false;b[0]--;return true};
   const applyOwned=()=>{if(room&&myProf){const p=room.players.get(pid);if(p&&!p.bot)p.ownedSkins=myProf.skins}}; // purchased premium skins come from the database, never from the client
   const join=rm=>{room=rm;s.join(rm.code);rm.socks.set(pid,s);rm.addPlayer(pid,tok);applyOwned()};
@@ -147,6 +189,7 @@ io.on('connection',s=>{
     if(!uid)return reply({ok:false,err:'bad_id'});
     if(identUid&&identUid!==uid&&!(acct&&!identAuthed))return reply({ok:false,err:'switch'});
     identUid=uid;identAuthed=!!acct;myAcct=acct;
+    {const sl=seaSessions.get(uid);if(sl&&!sl.sockId){sl.sockId=s.id;sl.dropAt=0}} // voyage waiting for a reconnect: pick it up on this socket
     if(room)room.ident(pid,{uid,name:d.name});
     const n=Date.now();if(n-lastIdentAt>2000){lastIdentAt=n;board.rename(uid,d.name)}
     if(d.done)await board.progress(uid,d.done); // catch-up for unlocks earned while offline
@@ -175,71 +218,76 @@ io.on('connection',s=>{
   s.on('island:load',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!lim('isl',10,1))return reply({ok:false,err:'busy'});
-    reply(await island.load(identUid))});
+    const r=await island.load(identUid),now=Date.now();
+    reply(Object.assign({},r,{seaCooldownMs:seaCooldownLeft(identUid,now),vitals:seaVitalsPack(identUid,now)}))});
   s.on('island:act',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     if(!d||typeof d!=='object'||!lim('isl',10,1))return reply({ok:false,err:'busy'});
     reply(await island.act(identUid,d.action,d.rev))});
 
-   s.on('sea:enter',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+  s.on('sea:enter',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!lim('isl',6,1))return reply({ok:false,err:'busy'});
+    if(!lim('sea',6,.5))return reply({ok:false,err:'busy'});
+    const now0=Date.now(),wait=seaCooldownLeft(identUid,now0);
+    if(wait>0)return reply({ok:false,err:'cooldown',waitMs:wait,vitals:seaVitalsPack(identUid,now0)});
     try{
+      // an unfinished voyage of this player (page refresh, second tab) is closed and saved properly first
+      const old=seaSessions.get(identUid);
+      if(old&&old.session&&old.session.status==='sailing'){
+        const r0=seaEnd(identUid,old,now0);
+        try{if(r0.ok)await island.saveSea(identUid,r0.discoveries)}catch(e){}}
       let disc={islets:[],treasures:[],voyages:0,treasureCount:0};
-try{
-  const discPack=await island.saveSea(identUid,{});
-  if(discPack&&discPack.ok&&discPack.sea)disc=discPack.sea;
-}catch(e){console.error('[sea] load discoveries',e.message)}
+      try{const g=await island.getSea(identUid);if(g&&g.ok&&g.sea)disc=g.sea}catch(e){console.error('[sea] load discoveries',e.message)}
+      const now=Date.now();
       const voyage=(disc.voyages|0)+1;
-      const session=Sea.createSession(identUid,voyage,disc);
+      const session=Sea.createSession(identUid,voyage,disc,{hp:seaHpNow(identUid,now)}); // boat health continues from where it was left
+      session.staleIntent=(d&&d.proto|0)>=2;
       const spread=((parseInt(String(identUid).slice(-4),16)||0)%360)*Math.PI/180;
       session.player.x=Math.cos(spread)*Sea.CFG.leaveR;
       session.player.y=Math.sin(spread)*Sea.CFG.leaveR;
       session.player.facing=spread;
       const name=(myProf&&myProf.name)||(d&&typeof d.name==='string'?d.name:'')||'Sailor';
-      seaSessions.set(identUid,{session,lastTick:Date.now(),sockId:s.id,name:String(name).slice(0,14),
-        emoji:null,emojiUntil:0,emojiMeta:{lastAt:0,countWindowStart:0,countInWindow:0}});
-      const now=Date.now();
-      reply({ok:true,sea:seaPackFor(identUid,seaSessions.get(identUid),now)});
-      seaBroadcastNearby(identUid,'sea:presence',{op:'join',uid:identUid,name:String(name).slice(0,14)},session.player.x,session.player.y);
+      const slot={session,sockId:s.id,name:String(name).slice(0,14),proto:(d&&d.proto|0)||1,dropAt:0,saveTimer:0,saving:false,again:false,
+        emoji:null,emojiUntil:0,emojiMeta:{lastAt:0,countWindowStart:0,countInWindow:0}};
+      seaSessions.set(identUid,slot);
+      reply({ok:true,sea:seaPackFor(identUid,slot,now,null,true),vitals:seaVitalsPack(identUid,now)});
+      seaBroadcastNearby(identUid,'sea:presence',{op:'join',uid:identUid,name:slot.name},session.player.x,session.player.y);
     }catch(e){console.error('[sea] enter',e.message);reply({ok:false,err:'unavailable'})}});
   s.on('sea:intent',(d)=>{
-    if(!identUid)return;const slot=seaSlotFor(identUid,s);if(!slot)return;
-    const mx=d&&typeof d.mx==='number'?Math.max(-1,Math.min(1,d.mx)):0;
-    const my=d&&typeof d.my==='number'?Math.max(-1,Math.min(1,d.my)):0;
-    Sea.setIntent(slot.session,mx,my)});
+    if(!identUid||!lim('sint',60,40))return;const slot=seaSlotFor(identUid,s);if(!slot)return;
+    const mx=d&&typeof d.mx==='number'&&isFinite(d.mx)?Math.max(-1,Math.min(1,d.mx)):0;
+    const my=d&&typeof d.my==='number'&&isFinite(d.my)?Math.max(-1,Math.min(1,d.my)):0;
+    Sea.setIntent(slot.session,mx,my,Date.now())});
   s.on('sea:tick',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
-    const now=Date.now(); // snapshot only: the server loop below owns the simulation clock
-    reply({ok:true,sea:seaPackFor(identUid,slot,now)})});
-  s.on('sea:act',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    const now=Date.now(); // snapshot only (always the full one: this is the client's resync path); the server loop owns the clock
+    reply({ok:true,sea:seaPackFor(identUid,slot,now,null,true)})});
+  s.on('sea:act',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!d||typeof d!=='object'||!lim('isl',20,5))return reply({ok:false,err:'busy'});
+    if(!d||typeof d!=='object'||!lim('seaAct',10,4))return reply({ok:false,err:'busy'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
-    const now=Date.now();let r;
+    const now=Date.now();let r,sunkSlot=null,sunkUid=null;
     if(d.op==='attack'){
       if(d.targetUid&&typeof d.targetUid==='string'&&d.targetUid!==identUid){
         const tSlot=seaSessions.get(d.targetUid);
         if(!tSlot||!tSlot.session||tSlot.session.status!=='sailing')r={ok:false,err:'no_target'};
         else{
           r=Sea.pvpAttack(slot.session,tSlot.session.player,now);
-          if(r.ok&&r.sunk){
-            tSlot.session.events.push({t:'pvp_sunk',by:identUid,at:now});
-            seaEmitTo(d.targetUid,'sea:event',{t:'pvp_sunk',by:slot.name,sea:seaPackFor(d.targetUid,tSlot,now)});
-          }else if(r.ok&&r.hit){
-            seaEmitTo(d.targetUid,'sea:event',{t:'pvp_hit',by:slot.name,hp:tSlot.session.player.hp,sea:seaPackFor(d.targetUid,tSlot,now)});
-          }
+          if(r.ok&&r.sunk){sunkSlot=tSlot;sunkUid=d.targetUid}
+          else if(r.ok&&r.hit)seaEmitTo(d.targetUid,'sea:event',{t:'pvp_hit',by:slot.name,hp:tSlot.session.player.hp,sea:seaPackFor(d.targetUid,tSlot,now)});
         }
       }else r=Sea.attack(slot.session,now);
     }
     else if(d.op==='loot')r=Sea.loot(slot.session,now);
     else if(d.op==='collect')r=Sea.collectTreasure(slot.session,now);
     else return reply({ok:false,err:'bad_action'});
-    reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}))});
+    if(slot.session.dirty){slot.session.dirty=false;seaQueueSave(identUid,slot)}
+    reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
+    if(sunkSlot)seaSink(sunkUid,sunkSlot,slot.name,now).catch(e=>console.error('[sea] sink',e.message))}); // the sunk boat leaves the sea and gets the cooldown
   s.on('sea:emoji',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!lim('isl',15,5))return reply({ok:false,err:'busy'});
+    if(!lim('emo',6,2))return reply({ok:false,err:'busy'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const id=d&&typeof d.id==='string'?d.id:'';
     const now=Date.now();
@@ -254,18 +302,20 @@ try{
       if(Math.hypot(op.x-p.x,op.y-p.y)>Sea.CFG.aoiR)continue;
       seaEmitTo(uid,'sea:emoji',payload);
     }
-    reply({ok:true,id,until:slot.emojiUntil})});
+    reply({ok:true,id,ttl:v.ttl,until:slot.emojiUntil})});
+  // {leave:true} = 'Leave Sea' (works anywhere, starts the 30 s cooldown). Without it = DOCK: only accepted next to the home island, no cooldown.
   s.on('sea:return',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    const slot=seaSessions.get(identUid);if(!slot)return reply({ok:false,err:'no_session'});
-    const r=Sea.returnHome(slot.session);
+    const now=Date.now(),slot=seaSessions.get(identUid);
+    if(!slot||!slot.session||slot.session.status!=='sailing')return reply({ok:false,err:'no_session',cooldownMs:seaCooldownLeft(identUid,now),vitals:seaVitalsPack(identUid,now)});
+    const leave=!!(d&&d.leave),p=slot.session.player;
+    if(!leave&&Math.hypot(p.x,p.y)>Sea.CFG.returnR+30)return reply({ok:false,err:'far'});
+    const r=seaEnd(identUid,slot,now,{cooldown:leave});
     if(!r.ok)return reply(r);
-    const px=slot.session.player.x,py=slot.session.player.y;
-    const saved=await island.saveSea(identUid,r.discoveries);
-    seaSessions.delete(identUid);
-    seaBroadcastNearby(null,'sea:presence',{op:'leave',uid:identUid},px,py);
-    reply({ok:true,nearHome:!!r.nearHome,island:saved.ok?saved.island:undefined,sea:r.discoveries})});
-  
+    let saved=null;try{saved=await island.saveSea(identUid,r.discoveries)}catch(e){}
+    const t=Date.now();
+    reply({ok:true,docked:!leave,nearHome:!!r.nearHome,island:saved&&saved.ok?saved.island:undefined,sea:r.discoveries,cooldownMs:seaCooldownLeft(identUid,t),vitals:seaVitalsPack(identUid,t)})});
+
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
     if(!lim('lb',6,1))return cb({rows:[],me:null,busy:1});
     board.top(d&&d.kind==='mp'?'mp':'solo',identUid||(d&&board.validUid(d.uid)?d.uid:'')).then(cb).catch(()=>cb({rows:[],me:null,error:'unavailable'}))});
@@ -281,7 +331,7 @@ try{
   s.on('dbg',d=>{if(DBG&&room)room.dbg(pid,d,Date.now())});
   s.on('disconnect',()=>{
     if(identUid){const slot=seaSessions.get(identUid); // keep the voyage for a short grace period so a reconnect resumes it
-      if(slot&&slot.sockId===s.id){slot.sockId=null;slot.dropAt=Date.now()+25000;try{Sea.setIntent(slot.session,0,0)}catch(e){}}}
+      if(slot&&slot.sockId===s.id){slot.sockId=null;slot.dropAt=Date.now()+30000;try{Sea.setIntent(slot.session,0,0)}catch(e){}}}
     if(!room)return;const rm=room;if(rm.socks.get(pid)!==s)return; // a newer socket already took over this slot
     rm.socks.delete(pid);
     if(rm.state==='LOBBY')rm.removePlayer(pid);else rm.setOffline(pid,Date.now()); // grace period in game
@@ -291,25 +341,34 @@ try{
 {const step=1000/CFG.tick;let next=Date.now();(function loop(){const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)});next+=step;if(next<Date.now()-250)next=Date.now();setTimeout(loop,Math.max(1,next-Date.now()))})()}
 const PORT=process.env.PORT||3000;
 
-// Open Sea: ONE authoritative simulation clock on the server (previously the client's polling ALSO advanced it,
-// so boats sped up/stalled with each player's network). State is pushed to every sailor ~15x/s.
-{let last=Date.now();
+// Open Sea: ONE authoritative simulation clock on the server. State is pushed to every sailor ~15x/s.
+// - the list of boats is built once per tick (not once per sailor)
+// - 'volatile' emits: if a phone's connection is backed up the stale snapshot is dropped instead of queued, so the picture
+//   jumps to the newest state when the network recovers rather than replaying old frames (this was the 'lag' on weak links)
+// - snapshots that carry events (pickups, kills) are sent reliably
+{let last=Date.now(),lastClean=0;
 setInterval(()=>{
   const now=Date.now(),dt=Math.min(0.1,Math.max(0.001,(now-last)/1000));last=now;
+  const voy=seaVoyagerList();
   for(const [uid,slot] of seaSessions){
     try{
       if(!slot||!slot.session||slot.session.status!=='sailing')continue;
       if(!slot.sockId&&slot.dropAt&&now>slot.dropAt){ // player never came back: save discoveries, free the boat
-        const p=slot.session.player,r=Sea.returnHome(slot.session);
-        seaSessions.delete(uid);
-        seaBroadcastNearby(null,'sea:presence',{op:'leave',uid},p.x,p.y);
+        const r=seaEnd(uid,slot,now);
         if(r.ok)Promise.resolve(island.saveSea(uid,r.discoveries)).catch(()=>{});
         continue}
       Sea.tick(slot.session,dt,now);
-      if(slot.sockId){const sock=io.sockets.sockets.get(slot.sockId);if(sock)sock.emit('sea:state',seaPackFor(uid,slot,now))}
+      if(slot.session.dirty){slot.session.dirty=false;seaQueueSave(uid,slot)}
+      if(slot.sockId){
+        const sock=io.sockets.sockets.get(slot.sockId);
+        if(sock){const pack=seaPackFor(uid,slot,now,voy,false);(pack.events&&pack.events.length?sock:sock.volatile).emit('sea:state',pack)}}
     }catch(e){console.error('[sea] loop',e.message)}
   }
+  if(now-lastClean>30000){ // forget boats that are fully repaired again and cooldowns that ended
+    lastClean=now;
+    for(const [u,v] of seaVitals)if(now-v.at>Sea.CFG.regenSeconds*1000+1000)seaVitals.delete(u);
+    for(const [u,t] of seaCooldown)if(t<=now)seaCooldown.delete(u)}
 },66)}
 
 srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init()}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
-for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{board.close().finally(()=>process.exit(0))}); // flush queued scores on redeploy/restart
+for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{seaFlushAll().catch(()=>{}).finally(()=>board.close().finally(()=>process.exit(0)))}); // flush gems + queued scores on redeploy/restart
