@@ -28,6 +28,9 @@
   let fxPulse=0;                          // performance.now() of the last attack pulse
   let popups=[];                          // floating '+1 💎' texts: {x,y,txt,t0}
   let homeScr=null;                       // where the home island is on screen right now (for the floating DOCK button)
+  const trails=new Map();                 // key -> [{x,y,t}] boat wake trails
+  const TRAIL_MAX=28;
+  const TRAIL_MS=1800;
 
   // ---------- projection ----------
   function metrics(canvas){
@@ -63,7 +66,7 @@
     // slim pushes leave out the static world: keep the last copy
     if(target){if(!snap.islets&&target.islets)snap.islets=target.islets;if(!snap.cfg&&target.cfg)snap.cfg=target.cfg;if(!snap.mp&&target.mp)snap.mp=target.mp}
     target=snap;lastStateAt=performance.now()}
-  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null}
+  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;trails.clear()}
   function showSelfEmoji(id,ttl){selfEmo={id,at:performance.now(),ttl:ttl||2500}}
   function clearSelfEmoji(){selfEmo=null}
   function pulse(){fxPulse=performance.now()}
@@ -97,6 +100,25 @@
     if(disp.player){
       if(!cam.init){cam.x=disp.player.x;cam.y=disp.player.y;cam.init=true}
       else{const kc=1-Math.exp(-dt*20);cam.x+=(disp.player.x-cam.x)*kc;cam.y+=(disp.player.y-cam.y)*kc}
+    }
+    // boat wake trails
+    const nowT=performance.now();
+    const pushTrail=(key,x,y,vx,vy)=>{
+      const spd=Math.hypot(vx||0,vy||0);
+      if(spd<12)return;
+      let arr=trails.get(key);if(!arr){arr=[];trails.set(key,arr)}
+      const last=arr[arr.length-1];
+      if(last&&Math.hypot(x-last.x,y-last.y)<10)return;
+      arr.push({x,y,t:nowT});
+      while(arr.length>TRAIL_MAX||(arr.length&&nowT-arr[0].t>TRAIL_MS))arr.shift();
+    };
+    if(disp.player)pushTrail('self',disp.player.x,disp.player.y,s.player&&s.player.vx,s.player&&s.player.vy);
+    for(const [key,e] of disp.ents){
+      if(e.kind==='npc'||e.kind==='other')pushTrail(key,e.x,e.y,e.src&&e.src.vx,e.src&&e.src.vy);
+    }
+    for(const [key,arr] of trails){
+      while(arr.length&&nowT-arr[0].t>TRAIL_MS)arr.shift();
+      if(!arr.length)trails.delete(key);
     }
   }
 
@@ -199,6 +221,22 @@
       g.clearRect(0,0,m.w,m.h);
       water(g,m,t);
 
+      // boat wake trails (behind everything else in the water)
+      {const nowT=performance.now();
+        g.lineCap='round';g.lineJoin='round';
+        for(const arr of trails.values()){
+          if(arr.length<2)continue;
+          for(let i=1;i<arr.length;i++){
+            const a=arr[i-1],b=arr[i],age=(nowT-b.t)/TRAIL_MS;
+            if(age>=1)continue;
+            const pa=P(a.x,a.y,m),pb=P(b.x,b.y,m);
+            g.strokeStyle='rgba(200,238,248,'+(0.35*(1-age)).toFixed(3)+')';
+            g.lineWidth=Math.max(1.5,m.c*(4.5-age*3));
+            g.beginPath();g.moveTo(pa[0],pa[1]);g.lineTo(pb[0],pb[1]);g.stroke();
+          }
+        }
+        g.lineCap='butt';g.lineJoin='miter'}
+
       // ground layer: home island + islets as thick iso slabs
       const hp=P(0,0,m),hr=(snap.cfg&&snap.cfg.homeR)||180,[hrx,hry]=ER(hr,m);
       slab(g,hp[0],hp[1],hrx*1.1,hry*1.1,m.c*10,COL.homeSand,COL.homeSandDark);
@@ -219,6 +257,12 @@
       for(const tr of(snap.treasures||[]))list.push({d:tr.x+tr.y,f:()=>{
         const p=P(tr.x,tr.y,m);g.font=Math.round(24*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.fillText(tr.kind==='chest'?'💎':'📦',p[0],p[1]+Math.sin(t*2+tr.x)*m.c*2)}});
+      for(const wk of(snap.wrecks||[]))list.push({d:wk.x+wk.y,f:()=>{
+        const p=P(wk.x,wk.y,m);
+        g.globalAlpha=0.75;g.font=Math.round(28*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+        g.fillText('💀',p[0],p[1]);
+        if(wk.loot){g.font=Math.round(16*m.c)+'px sans-serif';g.fillText('💎',p[0]+12*m.c,p[1]-14*m.c)}
+        g.globalAlpha=1}});
       for(const e of disp.ents.values()){
         const src=e.src;
         if(e.kind==='wild')list.push({d:e.x+e.y,f:()=>{
