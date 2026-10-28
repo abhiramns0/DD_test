@@ -55,10 +55,14 @@ async function seaSaveNow(uid,slot){
 // regenerating; leaving / being sunk starts the sail-out cooldown.
 function seaEnd(uid,slot,now,o){
   o=o||{};
-  const p=slot.session.player,r=Sea.returnHome(slot.session);
-  if(o.sunk&&p){
-    // leave a visible wreck so every sailor sees the boat drown and can loot it
-    try{Sea.addPlayerWreck(uid,p.x,p.y,1)}catch(e){}
+  // cargo rules: dock = banked; Leave Sea / lost connection = half is lost to the sea; sunk = everything floats
+  const p=slot.session.player,r=Sea.returnHome(slot.session,{mode:o.sunk?'sunk':(o.leave||o.timeout)?'leave':'dock'});
+  if(r.ok&&r.dropped&&p){
+    // a visible wreck / floating cargo that every nearby sailor can loot (10 s after a sinking, longer after Leave Sea)
+    try{
+      if(o.sunk)Sea.addPlayerWreck(uid,p.x,p.y,r.dropped);
+      else if(r.dropped.gems||r.dropped.gold)Sea.addPlayerWreck(uid,p.x,p.y,r.dropped,Sea.CFG.dropTtlMs);
+    }catch(e){}
   }
   // leave any sea team + abandon in-progress race
   try{
@@ -254,7 +258,8 @@ io.on('connection',s=>{
       try{const g=await island.getSea(identUid);if(g&&g.ok&&g.sea)disc=g.sea}catch(e){console.error('[sea] load discoveries',e.message)}
       const now=Date.now();
       const voyage=(disc.voyages|0)+1;
-      const session=Sea.createSession(identUid,voyage,disc,{hp:seaHpNow(identUid,now)}); // boat health continues from where it was left
+      let level=1;try{const il=await island.load(identUid);if(il&&il.ok&&il.island&&il.island.progress)level=il.island.progress.level|0||1}catch(e){} // bigger cargo hold with experience level
+      const session=Sea.createSession(identUid,voyage,disc,{hp:seaHpNow(identUid,now),level}); // boat health continues from where it was left
       session.staleIntent=(d&&d.proto|0)>=2;
       const spread=((parseInt(String(identUid).slice(-4),16)||0)%360)*Math.PI/180;
       session.player.x=Math.cos(spread)*Sea.CFG.leaveR;
@@ -295,6 +300,7 @@ io.on('connection',s=>{
     }
     else if(d.op==='loot')r=Sea.loot(slot.session,now);
     else if(d.op==='collect')r=Sea.collectTreasure(slot.session,now);
+    else if(d.op==='chest')r=Sea.openChest(slot.session,String(d.id||''),now);
     else return reply({ok:false,err:'bad_action'});
     if(slot.session.dirty){slot.session.dirty=false;seaQueueSave(identUid,slot)}
     reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
@@ -367,11 +373,11 @@ io.on('connection',s=>{
     if(!slot||!slot.session||slot.session.status!=='sailing')return reply({ok:false,err:'no_session',cooldownMs:seaCooldownLeft(identUid,now),vitals:seaVitalsPack(identUid,now)});
     const leave=!!(d&&d.leave),p=slot.session.player;
     if(!leave&&Math.hypot(p.x,p.y)>Sea.CFG.returnR+30)return reply({ok:false,err:'far'});
-    const r=seaEnd(identUid,slot,now,{cooldown:leave});
+    const r=seaEnd(identUid,slot,now,{cooldown:leave,leave});
     if(!r.ok)return reply(r);
     let saved=null;try{saved=await island.saveSea(identUid,r.discoveries)}catch(e){}
     const t=Date.now();
-    reply({ok:true,docked:!leave,nearHome:!!r.nearHome,island:saved&&saved.ok?saved.island:undefined,sea:r.discoveries,cooldownMs:seaCooldownLeft(identUid,t),vitals:seaVitalsPack(identUid,t)})});
+    reply({ok:true,docked:!leave,dropped:r.dropped||null,nearHome:!!r.nearHome,island:saved&&saved.ok?saved.island:undefined,sea:r.discoveries,cooldownMs:seaCooldownLeft(identUid,t),vitals:seaVitalsPack(identUid,t)})});
 
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
     if(!lim('lb',6,1))return cb({rows:[],me:null,busy:1});
@@ -425,7 +431,7 @@ setInterval(()=>{
     try{
       if(!slot||!slot.session||slot.session.status!=='sailing')continue;
       if(!slot.sockId&&slot.dropAt&&now>slot.dropAt){ // player never came back: save discoveries, free the boat
-        const r=seaEnd(uid,slot,now);
+        const r=seaEnd(uid,slot,now,{timeout:true});
         if(r.ok)Promise.resolve(island.saveSea(uid,r.discoveries)).catch(()=>{});
         continue}
       Sea.tick(slot.session,dt,now);
