@@ -120,7 +120,8 @@ function normalize(raw){
     islets:Array.isArray(rawSea.islets)?rawSea.islets.filter(id=>typeof id==='string').slice(0,200):[],
     treasures:Array.isArray(rawSea.treasures)?rawSea.treasures.filter(id=>typeof id==='string').slice(0,200):[],
     voyages:isInt(rawSea.voyages)&&rawSea.voyages>=0&&rawSea.voyages<=1e6?rawSea.voyages:0,
-    treasureCount:isInt(rawSea.treasureCount)&&rawSea.treasureCount>=0&&rawSea.treasureCount<=1e6?rawSea.treasureCount:0};
+    treasureCount:isInt(rawSea.treasureCount)&&rawSea.treasureCount>=0&&rawSea.treasureCount<=1e6?rawSea.treasureCount:0,
+    gold:isInt(rawSea.gold)&&rawSea.gold>=0&&rawSea.gold<=1e6?rawSea.gold:0};
 
   // Progress: prefer totalXp; fall back to deriving from a legacy level-only document.
   const rawProg=raw.progress&&typeof raw.progress==='object'&&!Array.isArray(raw.progress)?raw.progress:{};
@@ -204,7 +205,7 @@ function view(doc,rev){
     .map(z=>({id:z.id,xp:z.xp||0}))
     .sort((a,b)=>a.xp-b.xp);
   return{v:SCHEMA,rev,grid:GRID,tiles:terrainGrid(doc.unlocked),
-             sea:{voyages:doc.sea&&doc.sea.voyages||0,treasures:doc.sea&&doc.sea.treasureCount||0,islets:(doc.sea&&doc.sea.islets||[]).length},
+             sea:{voyages:doc.sea&&doc.sea.voyages||0,treasures:doc.sea&&doc.sea.treasureCount||0,gold:doc.sea&&doc.sea.gold||0,islets:(doc.sea&&doc.sea.islets||[]).length},
     zones:Object.values(ZONES).map(z=>({id:z.id,x:z.x,y:z.y,w:z.w,h:z.h,unlocked:doc.unlocked.includes(z.id),xp:z.xp||0})),
     structures:doc.structures.map(o=>{const d=STRUCTURES[o.type];return{id:o.id,type:o.type,kind:d.kind,label:d.label,x:o.x,y:o.y,w:d.w,h:d.h,removable:d.removable}}),
     placeable:Object.values(STRUCTURES).filter(d=>d.placeable).map(d=>({type:d.type,label:d.label})),
@@ -220,6 +221,7 @@ function applySeaDiscoveries(doc,disc){
   if(Array.isArray(disc.treasures))for(const id of disc.treasures)if(typeof id==='string'&&!s.treasures.includes(id))s.treasures.push(id);
   if(Number.isInteger(disc.voyages)&&disc.voyages>s.voyages)s.voyages=disc.voyages;
   if(Number.isInteger(disc.treasureCount)&&disc.treasureCount>s.treasureCount)s.treasureCount=disc.treasureCount;
+  if(Number.isInteger(disc.gold)&&disc.gold>(s.gold|0))s.gold=disc.gold;
   s.islets=s.islets.slice(0,200);s.treasures=s.treasures.slice(0,200);
   return{ok:true,doc:next}}
 
