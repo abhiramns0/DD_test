@@ -131,6 +131,8 @@ const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'},pingInterv
 // ---------- leaderboard: PostgreSQL (Supabase) via leaderboard.js. Credentials: DATABASE_URL (server environment only) ----------
 const board=require('./leaderboard').create(console);
 const island=require('./island-store').create({pool:board.getPool(),log:console}); // persistent private islands (island.js = rules, island-store.js = storage)
+const raceStore=require('./race-store').create({pool:board.getPool(),log:console}); // race leaderboards survive restarts (PostgreSQL, or a JSON file without a database)
+Sea.setBoardSaver(r=>raceStore.save(r));
 const auth=require('./auth').create(console); // Supabase sign-in (Google / Apple / email). Optional: without it everyone is a guest.
 // Developer-only reset: set ADMIN_KEY in the environment, then open  /admin/clear-leaderboard?key=<ADMIN_KEY>&confirm=yes
 const adminClear=()=>board.clear();
@@ -156,7 +158,7 @@ const mkRoom=(opts)=>{const code=newCode(),socks=new Map();
     }).catch(()=>{})};
   if(MODES[opts.mode])rm.mode=opts.mode;if(opts.teamMode==='teams')rm.teamMode='teams';rooms.set(code,rm);return rm};
 io.on('connection',s=>{
-  let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0],isl:[0,0],sea:[0,0],seaAct:[0,0],emo:[0,0],sint:[0,0]};
+  let room=null,identUid=null,identAuthed=false,myAcct=null,myProf=null,lastIdentAt=0,pid='player_'+hex(2),tok=hex(8),bucket={inp:[0,0],mv:[0,0],push:[0,0],shoot:[0,0],shield:[0,0],lb:[0,0],prog:[0,0],acct:[0,0],ident:[0,0],isl:[0,0],sea:[0,0],seaAct:[0,0],emo:[0,0],sint:[0,0],seaUi:[0,0]};
   const lim=(k,max,perSec)=>{const b=bucket[k],t=Date.now();b[0]=Math.min(max,b[0]+(t-b[1])/1000*perSec);b[1]=t;if(b[0]<1)return false;b[0]--;return true};
   const applyOwned=()=>{if(room&&myProf){const p=room.players.get(pid);if(p&&!p.bot)p.ownedSkins=myProf.skins}}; // purchased premium skins come from the database, never from the client
   const join=rm=>{room=rm;s.join(rm.code);rm.socks.set(pid,s);rm.addPlayer(pid,tok);applyOwned()};
@@ -318,7 +320,7 @@ io.on('connection',s=>{
   // ---- teaming ----
   s.on('sea:team',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!d||typeof d!=='object'||!lim('seaAct',12,6))return reply({ok:false,err:'busy'});
+    if(!d||typeof d!=='object'||!lim('seaUi',12,6))return reply({ok:false,err:'busy'}); // own bucket: spamming attack must never starve the team / race buttons
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const now=Date.now(),p=slot.session.player;
     if(d.op==='invite'){
@@ -350,7 +352,7 @@ io.on('connection',s=>{
   // ---- racing ----
   s.on('sea:race',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!d||typeof d!=='object'||!lim('seaAct',8,3))return reply({ok:false,err:'busy'});
+    if(!d||typeof d!=='object'||!lim('seaUi',8,3))return reply({ok:false,err:'busy'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const now=Date.now();
     if(d.op==='join'){
@@ -443,5 +445,5 @@ setInterval(()=>{
     for(const [u,t] of seaCooldown)if(t<=now)seaCooldown.delete(u)}
 },66)}
 
-srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init()}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
-for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{seaFlushAll().catch(()=>{}).finally(()=>board.close().finally(()=>process.exit(0)))}); // flush gems + queued scores on redeploy/restart
+srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init();raceStore.init().then(rows=>{Sea.loadRaceBoards(rows);if(rows.length)console.log('[race-board] restored',rows.length,'best times')}).catch(e=>console.error('[race-board] init',e.message))}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
+for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{raceStore.flush().catch(()=>{});seaFlushAll().catch(()=>{}).finally(()=>board.close().finally(()=>process.exit(0)))}); // flush gems + queued scores on redeploy/restart
