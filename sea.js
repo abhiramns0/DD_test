@@ -38,7 +38,7 @@ const CFG = {
   teamInviteRange: 160,
   regenSeconds: 30,
   seaCooldownMs: 30000,
-  intentStaleMs: 1500,
+  intentStaleMs: 900,
   viewR: 1000,
   crocDamage: 8,
   crocDamageRange: 48,
@@ -54,7 +54,8 @@ const CFG = {
   raceCheckpoints: 5,
   raceRadius: 220,
   raceCheckpointR: 70,
-  raceJoinR: 200
+  raceJoinR: 200,
+  raceCountdownMs: 3000
 };
 
 const EMOJIS = ['👋', '😂', '🏳️', '⚔️', '🤝', '⛵', '💎', '🆘', '👍', '❤️'];
@@ -943,6 +944,28 @@ function teamInfo(uid) {
   };
 }
 
+// ---- race leaderboard persistence (storage lives in race-store.js; this file stays pure) ----
+let boardSaver = null;
+function setBoardSaver(fn) {
+  boardSaver = typeof fn === 'function' ? fn : null;
+}
+// rows: [{ raceId, uid, name, ms }] read from the database at start-up
+function loadRaceBoards(rows) {
+  ensureShared();
+  for (const row of rows || []) {
+    const race = SHARED.races.find((r) => r.id === row.raceId);
+    if (!race || !row.uid || !(row.ms > 0)) continue;
+    const i = race.board.findIndex((b) => b.uid === row.uid);
+    if (i >= 0) {
+      if (row.ms < race.board[i].ms) race.board[i] = { uid: row.uid, name: row.name, ms: row.ms };
+    } else race.board.push({ uid: row.uid, name: row.name, ms: row.ms });
+  }
+  for (const race of SHARED.races) {
+    race.board.sort((a, b) => a.ms - b.ms);
+    if (race.board.length > 20) race.board.length = 20;
+  }
+}
+
 function raceJoin(uid, name, player, raceId) {
   ensureShared();
   const race = (SHARED.races || []).find((r) => r.id === raceId);
@@ -950,8 +973,10 @@ function raceJoin(uid, name, player, raceId) {
   if (race.entrants[uid] && !race.entrants[uid].finishedAt) return { ok: false, err: 'already' };
   const d = Math.hypot(player.x - race.x, player.y - race.y);
   if (d > CFG.raceJoinR) return { ok: false, err: 'far' };
-  race.entrants[uid] = { startAt: Date.now(), nextCp: 0, finishedAt: 0, name: name || 'Sailor' };
-  return { ok: true, raceId, checkpoints: race.checkpoints.length };
+  // 3-2-1 countdown: the clock (and checkpoint detection) only starts at startAt
+  const startAt = Date.now() + CFG.raceCountdownMs;
+  race.entrants[uid] = { startAt, nextCp: 0, finishedAt: 0, name: name || 'Sailor' };
+  return { ok: true, raceId, checkpoints: race.checkpoints.length, countdownMs: CFG.raceCountdownMs };
 }
 
 function raceTickPlayer(uid, player, now) {
@@ -959,6 +984,7 @@ function raceTickPlayer(uid, player, now) {
   for (const race of SHARED.races || []) {
     const ent = race.entrants[uid];
     if (!ent || ent.finishedAt) continue;
+    if (now < ent.startAt) continue; // still counting down
     const cp = race.checkpoints[ent.nextCp];
     if (!cp) continue;
     if (Math.hypot(player.x - cp.x, player.y - cp.y) <= cp.r) {
@@ -968,10 +994,18 @@ function raceTickPlayer(uid, player, now) {
         const ms = now - ent.startAt;
         // keep only each player's best (lowest) time
         const prev = race.board.findIndex((b) => b.uid === uid);
+        let improved = false;
         if (prev >= 0) {
-          if (ms < race.board[prev].ms) race.board[prev] = { uid, name: ent.name, ms };
+          if (ms < race.board[prev].ms) {
+            race.board[prev] = { uid, name: ent.name, ms };
+            improved = true;
+          }
         } else {
           race.board.push({ uid, name: ent.name, ms });
+          improved = true;
+        }
+        if (improved && boardSaver) {
+          try { boardSaver({ raceId: race.id, uid, name: ent.name, ms }); } catch (e) { /* never break the tick */ }
         }
         race.board.sort((a, b) => a.ms - b.ms);
         if (race.board.length > 20) race.board.length = 20;
@@ -1004,7 +1038,7 @@ function racesNear(x, y) {
       y: r1(r.y),
       r: r.r,
       checkpoints: r.checkpoints.map((c) => ({ x: r1(c.x), y: r1(c.y), r: c.r, finish: !!c.finish })),
-      board: r.board.slice(0, 10),
+      board: r.board.slice(0, 10).map((b) => ({ name: b.name, ms: b.ms })),
       entrants: Object.keys(r.entrants).filter((u) => r.entrants[u] && !r.entrants[u].finishedAt).length
     }));
 }
@@ -1052,6 +1086,7 @@ function validateEmoji(id, now, meta) {
 }
 
 function viewWithOthers(session, others, now, opts) {
+  now = now || Date.now();
   const v = view(session, opts);
   if (!v) return null;
   v.others = others || [];
@@ -1073,7 +1108,15 @@ function viewWithOthers(session, others, now, opts) {
   for (const race of SHARED.races || []) {
     const ent = race.entrants[session.uid];
     if (ent && !ent.finishedAt) {
-      v.raceProgress = { raceId: race.id, nextCp: ent.nextCp, total: race.checkpoints.length, startAt: ent.startAt };
+      // elapsed is relative (negative while counting down) so the client never depends on clock sync
+      v.raceProgress = {
+        raceId: race.id,
+        nextCp: ent.nextCp,
+        total: race.checkpoints.length,
+        startAt: ent.startAt,
+        elapsed: now - ent.startAt,
+        countingDown: now < ent.startAt
+      };
       break;
     }
   }
@@ -1116,6 +1159,8 @@ module.exports = {
   clampToWorld,
   ensureShared,
   resetSharedForTests,
+  setBoardSaver,
+  loadRaceBoards,
   sameTeam,
   getTeamFor,
   teamInvite,
