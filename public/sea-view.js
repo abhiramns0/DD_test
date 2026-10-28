@@ -29,6 +29,8 @@
   let popups=[];                          // floating '+1 💎' texts: {x,y,txt,t0}
   let homeScr=null;                       // where the home island is on screen right now (for the floating DOCK button)
   const trails=new Map();                 // key -> [{x,y,t}] boat wake trails
+  let qual=2,ftEma=16.7,qualGood=0,qualBad=0;   // adaptive quality 2=full 1=reduced resolution 0=lite: slow phones drop detail instead of stuttering
+  let resync=false;                             // set after a long stall: snap everything to the newest snapshot instead of gliding across the screen
   const TRAIL_MAX=48;
   const TRAIL_MS=2400;
 
@@ -75,7 +77,7 @@
     target=snap;lastStateAt=performance.now();
     if(snap.cfg&&typeof snap.cfg.speed==='number')localSpeed=snap.cfg.speed;
   }
-  function reset(){target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;trails.clear();localIntent={mx:0,my:0}}
+  function reset(){resync=false;target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;trails.clear();localIntent={mx:0,my:0}}
   function showSelfEmoji(id,ttl){selfEmo={id,at:performance.now(),ttl:ttl||2500}}
   function clearSelfEmoji(){selfEmo=null}
   function pulse(){fxPulse=performance.now()}
@@ -127,6 +129,7 @@
       if(s.player.facing!=null&&!(imx||imy))p.f+=angDiff(p.f,s.player.facing)*Math.min(1,dt*8);
       p.init=true;
     }
+    if(resync){resync=false;for(const e of disp.ents.values())e.init=false;if(disp.player&&s.player){disp.player.x=s.player.x||0;disp.player.y=s.player.y||0;disp.player.vx=s.player.vx||0;disp.player.vy=s.player.vy||0}cam.init=false;trails.clear()}
     const seen=new Set();
     const feed=(arr,kind,idf)=>{
       for(const it of(arr||[])){
@@ -236,7 +239,7 @@
     g.fillStyle=grd;g.fillRect(0,0,m.w,m.h);
     // wave dashes anchored to WORLD coordinates: they slide past as you sail, so motion is
     // visible even over empty water, and they bob with time so the sea is never a still frame.
-    const step=140,span=Math.min(14,Math.ceil(Math.max(m.w,m.h)/(m.c*step))+2);
+    const step=qual>=1?140:210,span=Math.min(qual>=1?14:8,Math.ceil(Math.max(m.w,m.h)/(m.c*step))+2);
     const gx=Math.floor(cam.x/step),gy=Math.floor(cam.y/step);
     g.strokeStyle=COL.foam;g.lineWidth=Math.max(1,m.c*1.4);g.lineCap='round';
     for(let i=-span;i<=span;i++)for(let j=-span;j<=span;j++){
@@ -257,7 +260,7 @@
       const st=canvas.style;
       st.position='absolute';st.left='0';st.top='0';st.right='0';st.bottom='0';
       st.width='100%';st.height='100%';st.zIndex='1';st.display='block';st.pointerEvents='none';
-      const dpr=Math.min(2,window.devicePixelRatio||1);
+      const dpr=Math.min(qual>=2?2:qual===1?1.25:1,window.devicePixelRatio||1);
       const bw=Math.max(1,Math.round(m.w*dpr)),bh=Math.max(1,Math.round(m.h*dpr));
       if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh}
       const g=canvas.getContext('2d');if(!g)return;
@@ -280,6 +283,7 @@
             g.strokeStyle='rgba(220,245,255,'+(0.22*fade).toFixed(3)+')';
             g.lineWidth=Math.max(4,m.c*(14-age*9));
             g.beginPath();g.moveTo(pa[0],pa[1]);g.lineTo(pb[0],pb[1]);g.stroke();
+            if(qual<1)continue;
             // inner brighter core
             g.strokeStyle='rgba(255,255,255,'+(0.38*fade).toFixed(3)+')';
             g.lineWidth=Math.max(2,m.c*(7-age*4.5));
@@ -304,10 +308,13 @@
       homeScr={x:hp[0],y:hp[1]-m.c*38,w:m.w,h:m.h};
 
       // racing events: glowing pulsating circle + race flag
+      const racing=!!snap.raceProgress;   // while I am racing (incl. the 3-2-1 countdown) the join circle is hidden so only the checkpoints remain
       for(const race of(snap.races||[])){
+        if(racing&&snap.raceProgress.raceId!==race.id)continue;
         const rp=P(race.x,race.y,m),[rrx,rry]=ER(race.r||200,m);
         const pulse=0.55+0.45*Math.sin(t*3.2);
         g.save();
+        if(!racing){
         g.strokeStyle='rgba(255,210,60,'+(0.35+0.4*pulse).toFixed(3)+')';
         g.lineWidth=Math.max(3,m.c*4);
         g.setLineDash([m.c*12,m.c*8]);
@@ -324,6 +331,7 @@
         g.font=Math.round(36*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.globalAlpha=0.9;g.fillText('🏁',rp[0],rp[1]-m.c*6);g.globalAlpha=1;
         label(g,race.name||'RACE',rp[0],rp[1]+m.c*18,Math.round(12*m.A),'#ffe9a0');
+        }
         // checkpoints for active race
         const prog=snap.raceProgress;
         if(prog&&prog.raceId===race.id){
@@ -333,6 +341,7 @@
             g.strokeStyle=done?'rgba(80,220,120,.55)':(next?'rgba(255,220,60,.9)':'rgba(255,255,255,.25)');
             g.lineWidth=next?Math.max(2.5,m.c*2.5):Math.max(1.5,m.c*1.5);
             g.beginPath();g.ellipse(cpP[0],cpP[1],cx,cy,0,0,6.283);g.stroke();
+            g.textAlign='center';g.textBaseline='middle';
             if(next){g.font=Math.round(18*m.c)+'px sans-serif';g.fillText(cp.finish?'🏁':String(i+1),cpP[0],cpP[1])}
           });
         }
@@ -383,29 +392,40 @@
       for(const pp of popups){const a=(nowMs-pp.t0)/1000,p=P(pp.x,pp.y,m);
         g.globalAlpha=1-a*a;label(g,pp.txt,p[0],p[1]-30*m.c-a*46,Math.round(17*Math.max(.9,m.A)),'#fff3b0');g.globalAlpha=1}
 
-      // home navigation: light-opacity anchor emoji pointing toward home island + distance
-      // ⚓ glyph is upright with flukes at the bottom; rotate so "down" aligns with the
-      // screen direction toward home (player -> island). The marker sits on that ray.
-      if(snap.player&&!snap.nearHome&&disp.player){
-        const dist=Math.hypot(disp.player.x,disp.player.y)||1;
-        const ang=Math.atan2(hp[1]-m.oy,hp[0]-m.ox); // screen angle toward home
-        const onScreen=hp[0]>40&&hp[0]<m.w-40&&hp[1]>40&&hp[1]<m.h-40;
-        if(!onScreen){
-          const edge=Math.min(m.w,m.h)*0.36,ix=m.ox+Math.cos(ang)*edge,iy=m.oy+Math.sin(ang)*edge;
-          g.save();
-          g.translate(ix,iy);
-          // rotate so the bottom of the emoji (flukes) points toward home
-          g.rotate(ang - Math.PI/2);
-          g.globalAlpha=0.55;
-          g.font=Math.round(30*Math.max(0.9,m.A))+'px sans-serif';
-          g.textAlign='center';g.textBaseline='middle';
-          g.fillText('⚓',0,0);
+      // ---- edge pointers: ⚓ toward the home island, 🏁 toward nearby race circles (or the next checkpoint while racing) ----
+      // Off-screen targets get a light marker on a ray from the screen centre. The distance label sits well clear of the
+      // emoji (no overlap) and is a plain number (no unit).
+      if(snap.player&&disp.player){
+        const placed=[];
+        const pointer=(tx,ty,kind,wdist,txt)=>{
+          if(tx>40&&tx<m.w-40&&ty>40&&ty<m.h-40)return;               // target already visible: no pointer needed
+          const ang=Math.atan2(ty-m.oy,tx-m.ox);
+          let edge=Math.min(m.w,m.h)*0.36;
+          for(const q of placed){let d=Math.abs(angDiff(ang,q));if(d<0.42){edge*=0.72;break}} // two markers in the same direction: stagger them
+          placed.push(ang);
+          const ix=m.ox+Math.cos(ang)*edge,iy=m.oy+Math.sin(ang)*edge,fs2=Math.round(30*Math.max(0.9,m.A)),gap=fs2*0.5+24;
+          g.save();g.textAlign='center';g.textBaseline='middle';g.font=fs2+'px sans-serif';
+          if(kind==='home'){
+            g.translate(ix,iy);g.rotate(ang-Math.PI/2);       // flukes (bottom of the glyph) point toward home
+            g.globalAlpha=0.55;g.fillText('⚓',0,0);
+          }else{
+            g.globalAlpha=0.7;g.fillText('🏁',ix,iy);
+            const ax=ix+Math.cos(ang)*(fs2*0.5+9),ay=iy+Math.sin(ang)*(fs2*0.5+9),sz=7; // small arrow head toward the race
+            g.translate(ax,ay);g.rotate(ang);g.fillStyle='rgba(255,226,120,.9)';
+            g.beginPath();g.moveTo(sz,0);g.lineTo(-sz*0.6,-sz*0.8);g.lineTo(-sz*0.6,sz*0.8);g.closePath();g.fill();
+          }
           g.restore();
-          g.globalAlpha=0.7;
-          // distance label stays upright, slightly outside the marker along the home ray
-          const lx=ix+Math.cos(ang)*18,ly=iy+Math.sin(ang)*18;
-          label(g,Math.round(dist)+' m',lx,ly,11,'#e8f6ff');
-          g.globalAlpha=1;
+          // label on the side away from the arrow tip for 🏁 (inward), beyond the flukes for ⚓ (outward) - always clear of the glyph
+          const dir=kind==='home'?1:-1,lx=ix+Math.cos(ang)*gap*dir,ly=iy+Math.sin(ang)*gap*dir;
+          g.globalAlpha=0.8;label(g,String(Math.round(wdist)),lx,ly,Math.round(12*Math.max(0.9,m.A)),kind==='home'?'#e8f6ff':'#ffe9a0');g.globalAlpha=1;
+        };
+        if(!snap.nearHome)pointer(hp[0],hp[1],'home',Math.hypot(disp.player.x,disp.player.y),'');
+        const prog=snap.raceProgress;
+        if(prog){
+          const race=(snap.races||[]).find(r=>r.id===prog.raceId),cp=race&&(race.checkpoints||[])[prog.nextCp];
+          if(cp){const cpP=P(cp.x,cp.y,m);pointer(cpP[0],cpP[1],'race',Math.hypot(cp.x-disp.player.x,cp.y-disp.player.y),'')}
+        }else{
+          for(const race of(snap.races||[])){const rp=P(race.x,race.y,m);pointer(rp[0],rp[1],'race',Math.hypot(race.x-disp.player.x,race.y-disp.player.y),'')}
         }
       }
     }catch(e){try{console.error('[SeaView]',e)}catch(x){}}
@@ -416,7 +436,14 @@
     stop();canvasRef=canvas;onFrame=cb||null;lastT=0;
     const loop=ts=>{
       raf=requestAnimationFrame(loop);
-      const dt=lastT?Math.min(0.1,(ts-lastT)/1000):0.016;lastT=ts;
+      const raw=lastT?(ts-lastT):16.7,dt=lastT?Math.min(0.1,raw/1000):0.016;lastT=ts;
+      if(raw>300)resync=true;                       // the device hung (tab switch, GC, slow load): jump to the current picture
+      else{                                         // adaptive quality from the smoothed frame time
+        ftEma+=(Math.min(raw,100)-ftEma)*0.08;
+        if(ftEma>30){qualBad+=raw;qualGood=0;if(qualBad>1500&&qual>0){qual--;qualBad=0;ftEma=22}}
+        else if(ftEma<19){qualGood+=raw;qualBad=0;if(qualGood>8000&&qual<2){qual++;qualGood=0}}
+        else{qualBad=0;qualGood=0}
+      }
       render(canvasRef,ts/1000,dt);
       if(onFrame){try{onFrame(dt)}catch(e){}}
     };
