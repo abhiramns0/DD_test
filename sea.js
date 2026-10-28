@@ -55,8 +55,17 @@ const CFG = {
   raceRadius: 220,
   raceCheckpointR: 70,
   raceJoinR: 200,
-  raceCountdownMs: 3000
+  raceCountdownMs: 3000,
+  invBase: 20,          // gems / gold a boat can carry at level 1 (each); +invPerLevel per extra experience level
+  invPerLevel: 5,
+  chestRange: 85,       // how close to an islet's shore a boat must be to open its chest
+  chestSpeed: 45,       // ...and it must be (nearly) stopped
+  chestRestMs: 90000,   // an opened chest rests this long
+  chestMin: 1,
+  chestMax: 10,
+  dropTtlMs: 30000      // resources dropped by 'Leave Sea' stay floating this long
 };
+const invCap = (level) => CFG.invBase + CFG.invPerLevel * Math.max(0, (level | 0) - 1);
 
 const EMOJIS = ['👋', '😂', '🏳️', '⚔️', '🤝', '⛵', '💎', '🆘', '👍', '❤️'];
 
@@ -114,6 +123,7 @@ function generateWorld(seed) {
     const r = 55 + rnd() * 45;
     islets.push({
       id, x, y, r,
+      chestAt: 0,
       name: ['Coral Cay', 'Driftwood Key', 'Mist Atoll', 'Shell Spit', 'Gull Rock', 'Palm Speck', 'Wreck Shoal'][i % 7]
     });
     used.push({ x, y });
@@ -300,12 +310,15 @@ function createSession(uid, voyage, savedDiscoveries, opts) {
     dirty: false,
     events: [],
     discoveries: disc,
+    level: Math.max(1, (opts && opts.level) | 0 || 1),
+    inv: { gems: 0, gold: 0 },
+    fullAt: { gems: 0, gold: 0 },
     status: 'sailing'
   };
 }
 
 function normalizeDiscoveries(raw) {
-  const out = { islets: [], treasures: [], voyages: 0, treasureCount: 0 };
+  const out = { islets: [], treasures: [], voyages: 0, treasureCount: 0, gold: 0 };
   if (!raw || typeof raw !== 'object') return out;
   if (Array.isArray(raw.islets))
     out.islets = raw.islets.filter((id) => typeof id === 'string').slice(0, 200);
@@ -315,6 +328,7 @@ function normalizeDiscoveries(raw) {
     out.voyages = Math.min(raw.voyages, 1e6);
   if (Number.isInteger(raw.treasureCount) && raw.treasureCount >= 0)
     out.treasureCount = Math.min(raw.treasureCount, 1e6);
+  if (Number.isInteger(raw.gold) && raw.gold >= 0) out.gold = Math.min(raw.gold, 1e6);
   return out;
 }
 
@@ -323,7 +337,8 @@ function packDiscoveries(session) {
     islets: session.discoveries.islets.slice(),
     treasures: session.discoveries.treasures.slice(),
     voyages: session.discoveries.voyages,
-    treasureCount: session.discoveries.treasureCount
+    treasureCount: session.discoveries.treasureCount,
+    gold: session.discoveries.gold | 0
   };
 }
 
@@ -495,7 +510,6 @@ function tickShared(dt, now, playerPositions) {
       }
     }
   }
-  W.playerWrecks = W.playerWrecks.filter((w) => now - w.at < 12000);
 }
 
 function tick(session, dt, now) {
@@ -578,6 +592,10 @@ function tick(session, dt, now) {
   }
   autoCollect(session, now);
   session.nearHome = Math.hypot(p.x, p.y) <= CFG.returnR;
+  if (session.nearHome && (session.inv.gems || session.inv.gold)) {
+    const dep = deposit(session); // arriving at the home island banks everything you carry
+    session.events.push({ t: 'deposit', gems: dep.gems, gold: dep.gold, at: now });
+  }
   // race checkpoint progress
   const raceRes = raceTickPlayer(session.uid, p, now);
   if (raceRes) {
@@ -585,6 +603,28 @@ function tick(session, dt, now) {
     else if (raceRes.checkpoint) session.events.push({ t: 'race_cp', cp: raceRes.checkpoint, at: now });
   }
   return session;
+}
+
+// ---- inventory: boats carry a limited amount of gems and gold until they are deposited at home ----
+function invSpace(session, what) {
+  return Math.max(0, invCap(session.level) - (session.inv[what] | 0));
+}
+function noteFull(session, what, now) {
+  if (now - (session.fullAt[what] || 0) > 3000) {
+    session.fullAt[what] = now;
+    session.events.push({ t: 'full', what, at: now });
+  }
+}
+// moves everything carried into the saved totals (home island deposit / docking)
+function deposit(session) {
+  const g = session.inv.gems | 0, c = session.inv.gold | 0;
+  if (!g && !c) return { gems: 0, gold: 0 };
+  session.discoveries.treasureCount += g;
+  session.discoveries.gold = (session.discoveries.gold | 0) + c;
+  session.inv.gems = 0;
+  session.inv.gold = 0;
+  session.dirty = true;
+  return { gems: g, gold: c };
 }
 
 function autoCollect(session, now) {
@@ -637,29 +677,68 @@ function loot(session, now) {
   const p = session.player;
   let best = null;
   let bd = CFG.lootRange;
+  const has = (e) => ((e.gems | 0) + (e.gold | 0) > 0);
   for (const n of session.npcs.filter((n) => !n.alive && (n.loot | 0) > 0)) {
     const d = Math.hypot(n.x - p.x, n.y - p.y);
     if (d < bd) {
       bd = d;
-      best = n;
+      best = { ref: n, npc: true, gems: n.loot | 0, gold: 0 };
     }
   }
   ensureShared();
   for (const w of SHARED.playerWrecks) {
-    if ((w.loot | 0) <= 0) continue;
+    if (!has(w) || now - (w.at || 0) >= (w.ttl || CFG.wreckTtlMs)) continue;
     const d = Math.hypot(w.x - p.x, w.y - p.y);
     if (d < bd) {
       bd = d;
-      best = w;
+      best = { ref: w, npc: false, gems: w.gems | 0, gold: w.gold | 0 };
     }
   }
   if (!best) return { ok: false, err: 'nothing' };
-  const gained = best.loot;
-  best.loot = 0;
-  session.discoveries.treasureCount += gained | 0;
-  session.dirty = true;
-  session.events.push({ t: 'loot', id: best.id, gained, at: now });
-  return { ok: true, gained, id: best.id };
+  const takeG = Math.min(best.gems, invSpace(session, 'gems'));
+  const takeC = Math.min(best.gold, invSpace(session, 'gold'));
+  if (takeG <= 0 && takeC <= 0) {
+    if (best.gems > 0) noteFull(session, 'gems', now);
+    if (best.gold > 0) noteFull(session, 'gold', now);
+    return { ok: false, err: 'full' };
+  }
+  if (best.npc) best.ref.loot = (best.ref.loot | 0) - takeG;
+  else {
+    best.ref.gems = (best.ref.gems | 0) - takeG;
+    best.ref.gold = (best.ref.gold | 0) - takeC;
+  }
+  session.inv.gems += takeG;
+  session.inv.gold += takeC;
+  session.events.push({ t: 'loot', id: best.ref.id, gems: takeG, gold: takeC, gained: takeG + takeC, at: now });
+  return { ok: true, gems: takeG, gold: takeC, gained: takeG + takeC, id: best.ref.id };
+}
+
+// Island chest: stop next to an islet, open it for 1-10 gold, then it rests for a while.
+function chestInRange(session, it) {
+  const p = session.player;
+  return (
+    Math.hypot(it.x - p.x, it.y - p.y) <= it.r + CFG.chestRange &&
+    Math.hypot(p.vx || 0, p.vy || 0) <= CFG.chestSpeed
+  );
+}
+function openChest(session, id, now) {
+  if (!session || session.status !== 'sailing') return { ok: false, err: 'not_sailing' };
+  if (!session.player.alive) return { ok: false, err: 'dead' };
+  const it = session.islets.find((i) => i.id === id);
+  if (!it) return { ok: false, err: 'no_chest' };
+  if (!chestInRange(session, it)) return { ok: false, err: 'far' };
+  if (now < (it.chestAt || 0)) return { ok: false, err: 'resting', waitMs: it.chestAt - now };
+  const space = invSpace(session, 'gold');
+  if (space <= 0) {
+    noteFull(session, 'gold', now);
+    return { ok: false, err: 'full' };
+  }
+  const roll = CFG.chestMin + Math.floor(Math.random() * (CFG.chestMax - CFG.chestMin + 1));
+  const gold = Math.min(space, roll);
+  it.chestAt = now + CFG.chestRestMs;
+  session.inv.gold += gold;
+  session.events.push({ t: 'chest', id, gold, at: now });
+  return { ok: true, gold, id };
 }
 
 function collectTreasure(session, now) {
@@ -680,35 +759,60 @@ function collectTreasure(session, now) {
     best.collected = true;
     return { ok: false, err: 'already' };
   }
+  const space = invSpace(session, 'gems');
+  if (space <= 0) {
+    noteFull(session, 'gems', now); // bag full: the gem stays in the water until you deposit at home
+    return { ok: false, err: 'full' };
+  }
+  const val = Math.min(space, (best.value | 0) || 1);
   best.collected = true;
   best.collectedAt = now;
   session.discoveries.treasures.push(best.id);
-  session.discoveries.treasureCount += (best.value | 0) || 1;
-  session.dirty = true;
+  session.inv.gems += val;
   session.events.push({
     t: 'treasure',
     id: best.id,
     kind: best.kind,
-    value: best.value,
+    value: val,
     at: now
   });
-  return { ok: true, id: best.id, kind: best.kind, value: best.value };
+  return { ok: true, id: best.id, kind: best.kind, value: val };
 }
 
-function returnHome(session) {
+// mode: 'dock' (bank everything) | 'leave' (half of the cargo is lost to the sea, the rest is banked) | 'sunk' (all cargo is lost)
+function returnHome(session, opts) {
   if (!session || session.status !== 'sailing') return { ok: false, err: 'not_sailing' };
+  const mode = (opts && opts.mode) || 'dock';
+  let dropped = null;
+  if (mode === 'dock') deposit(session);
+  else if (mode === 'leave') {
+    const dg = Math.ceil((session.inv.gems | 0) / 2);
+    const dc = Math.ceil((session.inv.gold | 0) / 2);
+    session.inv.gems -= dg;
+    session.inv.gold -= dc;
+    deposit(session);
+    dropped = { gems: dg, gold: dc };
+  } else if (mode === 'sunk') {
+    dropped = { gems: session.inv.gems | 0, gold: session.inv.gold | 0 };
+    session.inv.gems = 0;
+    session.inv.gold = 0;
+  }
   session.status = 'docked';
   session.discoveries.voyages = (session.discoveries.voyages | 0) + 1;
-  return { ok: true, nearHome: !!session.nearHome, discoveries: packDiscoveries(session) };
+  return { ok: true, nearHome: !!session.nearHome, discoveries: packDiscoveries(session), dropped };
 }
 
-function addPlayerWreck(uid, x, y, loot) {
+// res: { gems, gold } carried by the boat (or a plain gem count); ttlMs: how long it floats (default wreckTtlMs)
+function addPlayerWreck(uid, x, y, res, ttlMs) {
   ensureShared();
+  const r = typeof res === 'number' ? { gems: res, gold: 0 } : res || {};
   SHARED.playerWrecks.push({
     id: 'wreck_' + uid + '_' + Date.now(),
     x,
     y,
-    loot: loot | 0,
+    gems: r.gems | 0,
+    gold: r.gold | 0,
+    ttl: ttlMs || CFG.wreckTtlMs,
     at: Date.now()
   });
   // keep list bounded
@@ -717,8 +821,7 @@ function addPlayerWreck(uid, x, y, loot) {
 
 function cleanWrecks(now) {
   ensureShared();
-  const ttl = CFG.wreckTtlMs;
-  SHARED.playerWrecks = SHARED.playerWrecks.filter((w) => now - (w.at || 0) < ttl);
+  SHARED.playerWrecks = SHARED.playerWrecks.filter((w) => now - (w.at || 0) < (w.ttl || CFG.wreckTtlMs));
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -776,16 +879,31 @@ function view(session, opts) {
       })),
     wrecks: session.npcs
       .filter((n) => !n.alive && near(n))
-      .map((n) => ({ id: n.id, x: r1(n.x), y: r1(n.y), loot: n.loot | 0, at: n.diedAt || 0 }))
+      .map((n) => ({
+        id: n.id, x: r1(n.x), y: r1(n.y), loot: n.loot | 0, gems: n.loot | 0, gold: 0,
+        left: Math.max(0, CFG.wreckTtlMs - (Date.now() - (n.diedAt || 0)))
+      }))
       .concat(
         SHARED.playerWrecks
-          .filter((w) => near(w) && (Date.now() - (w.at || 0)) < CFG.wreckTtlMs)
-          .map((w) => ({ id: w.id, x: r1(w.x), y: r1(w.y), loot: w.loot | 0, at: w.at || 0 }))
+          .filter((w) => near(w) && Date.now() - (w.at || 0) < (w.ttl || CFG.wreckTtlMs))
+          .map((w) => ({
+            id: w.id, x: r1(w.x), y: r1(w.y), gems: w.gems | 0, gold: w.gold | 0, loot: (w.gems | 0) + (w.gold | 0),
+            left: Math.max(0, (w.ttl || CFG.wreckTtlMs) - (Date.now() - (w.at || 0)))
+          }))
       ),
+    inv: { gems: session.inv.gems | 0, gold: session.inv.gold | 0, cap: invCap(session.level), level: session.level },
+    chests: session.islets
+      .filter((it) => Math.abs(it.x - p.x) <= R + it.r && Math.abs(it.y - p.y) <= R + it.r)
+      .map((it) => ({
+        id: it.id,
+        ready: Date.now() >= (it.chestAt || 0),
+        inRange: chestInRange(session, it)
+      })),
     events: drain,
     discoveries: {
       islets: session.discoveries.islets.length,
       treasures: session.discoveries.treasureCount,
+      gold: session.discoveries.gold | 0,
       voyages: session.discoveries.voyages
     }
   };
@@ -1145,6 +1263,8 @@ module.exports = {
   attack,
   loot,
   collectTreasure,
+  openChest,
+  invCap,
   returnHome,
   view,
   viewWithOthers,
