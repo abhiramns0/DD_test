@@ -27,7 +27,8 @@
   let selfEmo=null;                       // {id,at,ttl}: the emoji bubble on MY boat (set locally the moment it is sent)
   let fxPulse=0;                          // performance.now() of the last attack pulse
   let popups=[];                          // floating '+1 💎' texts: {x,y,txt,t0}
-  let homeScr=null;                       // where the home island is on screen right now (for the floating DOCK button)
+  let homeScr=null;
+  let chestScr=null;                      // where the openable island chest is on screen right now (for the floating chest button)                       // where the home island is on screen right now (for the floating DOCK button)
   const trails=new Map();                 // key -> [{x,y,t}] boat wake trails
   let qual=2,ftEma=16.7,qualGood=0,qualBad=0;   // adaptive quality 2=full 1=reduced resolution 0=lite: slow phones drop detail instead of stuttering
   let resync=false;                             // set after a long stall: snap everything to the newest snapshot instead of gliding across the screen
@@ -77,12 +78,13 @@
     target=snap;lastStateAt=performance.now();
     if(snap.cfg&&typeof snap.cfg.speed==='number')localSpeed=snap.cfg.speed;
   }
-  function reset(){resync=false;target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;trails.clear();localIntent={mx:0,my:0}}
+  function reset(){resync=false;target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;chestScr=null;trails.clear();localIntent={mx:0,my:0}}
   function showSelfEmoji(id,ttl){selfEmo={id,at:performance.now(),ttl:ttl||2500}}
   function clearSelfEmoji(){selfEmo=null}
   function pulse(){fxPulse=performance.now()}
   function popup(txt){const p=disp.player||(target&&target.player);if(!p)return;popups.push({x:p.x,y:p.y,txt,t0:performance.now()});if(popups.length>8)popups.shift()}
   function getHome(){return homeScr}
+  function getChest(){return chestScr}
   function stateAge(){return lastStateAt?performance.now()-lastStateAt:Infinity}
 
   function stepEntities(dt){
@@ -296,11 +298,18 @@
       const hp=P(0,0,m),hr=(snap.cfg&&snap.cfg.homeR)||180,[hrx,hry]=ER(hr,m);
       slab(g,hp[0],hp[1],hrx*1.1,hry*1.1,m.c*10,COL.homeSand,COL.homeSandDark);
       slab(g,hp[0],hp[1]-m.c*3,hrx*0.9,hry*0.9,m.c*5,COL.home,COL.homeDark);
+      chestScr=null;
+      const chestMap=new Map((snap.chests||[]).map(c=>[c.id,c]));
       for(const it of(snap.islets||[])){
         const p=P(it.x,it.y,m),[rx,ry]=ER(it.r||50,m);
         if(p[0]<-rx*2||p[0]>m.w+rx*2||p[1]<-ry*3||p[1]>m.h+ry*3)continue;
         slab(g,p[0],p[1],rx*1.05,ry*1.05,m.c*7,COL.isletSand,COL.isletSandDark);
         slab(g,p[0],p[1]-m.c*2,rx*0.85,ry*0.85,m.c*4,COL.islet,COL.isletDark);
+        // every island has a treasure chest: bright when ready, faded while it rests
+        const ch=chestMap.get(it.id),ready=!ch||ch.ready;
+        g.globalAlpha=ready?1:0.35;g.font=Math.round(24*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+        g.fillText('🧰',p[0],p[1]-m.c*8);g.globalAlpha=1;
+        if(ch&&ch.inRange&&ch.ready)chestScr={x:p[0],y:p[1]-m.c*26,w:m.w,h:m.h,id:it.id};
       }
       g.textAlign='center';g.textBaseline='middle';
       g.font=Math.round(34*m.c)+'px sans-serif';g.fillStyle='#000';g.fillText('🏝️',hp[0],hp[1]-m.c*14);
@@ -354,16 +363,16 @@
         const p=P(tr.x,tr.y,m);g.font=Math.round(24*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.fillText(tr.kind==='chest'?'💎':'📦',p[0],p[1]+Math.sin(t*2+tr.x)*m.c*2)}});
       for(const wk of(snap.wrecks||[]))list.push({d:wk.x+wk.y,f:()=>{
-        const ageMs=wk.at? (nowMs-(wk.at>1e12?wk.at:nowMs)):0; // server ms or relative
-        // skulls vanish after ~10s (client fade in last 1.5s)
-        const ttl=(snap.mp&&snap.mp.wreckTtlMs)||10000;
-        const life=wk.at?(Date.now()-(wk.at||0)):0;
-        if(life>ttl)return;
-        const fade=life>ttl-1500?Math.max(0,(ttl-life)/1500):1;
+        // time left comes from the server as a relative value, so it never depends on the phone's clock
+        const life=(wk.left!=null?wk.left:10000)-(nowMs-lastStateAt);
+        if(life<=0)return;
+        const fade=life<1500?Math.max(0,life/1500):1;
         const p=P(wk.x,wk.y,m);
-        g.globalAlpha=0.8*fade;g.font=Math.round(28*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+        g.globalAlpha=0.85*fade;g.font=Math.round(28*m.c)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
         g.fillText('💀',p[0],p[1]);
-        if(wk.loot){g.font=Math.round(16*m.c)+'px sans-serif';g.fillText('💎',p[0]+12*m.c,p[1]-14*m.c)}
+        g.font=Math.round(16*m.c)+'px sans-serif';
+        if(wk.gems||(wk.loot&&wk.gold==null))g.fillText('💎',p[0]+12*m.c,p[1]-14*m.c);
+        if(wk.gold)g.fillText('🪙',p[0]-12*m.c,p[1]-14*m.c);
         g.globalAlpha=1}});
       for(const e of disp.ents.values()){
         const src=e.src;
@@ -472,5 +481,5 @@
     window.addEventListener('blur',()=>{_keys={};fire()});
   }
 
-  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome,setLocalIntent,setLocalSpeed};
+  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome,getChest,setLocalIntent,setLocalSpeed};
 })();
