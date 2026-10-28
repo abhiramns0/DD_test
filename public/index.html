@@ -68,6 +68,23 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #sea .seaHpBox.low{animation:seaHpFlash .8s ease-in-out infinite}
 @keyframes seaHpFlash{50%{box-shadow:0 3px 0 rgba(39,64,90,.25),0 0 0 3px rgba(229,72,77,.75)}}
 #seaHpTxt{min-width:34px;text-align:right}
+#sea .seaInvBox{flex-direction:column;align-items:stretch;gap:5px;padding:6px 11px 6px 8px}
+#sea .invRow{display:flex;align-items:center;gap:7px}
+#sea .invRow .ic{width:18px;text-align:center}
+#sea .invRow b{min-width:42px;text-align:right;font-size:12px}
+#seaGoldFill,#seaGemFill{display:block;height:100%;width:0;border-radius:99px;transition:width .25s linear}
+#seaGoldFill{background:linear-gradient(90deg,#f0b429,#ffe07a)}#seaGemFill{background:linear-gradient(90deg,#3aa8e8,#8fe3ff)}
+#sea .invRow.full b{color:#d6402b}
+#sea button.seaChest{position:absolute;z-index:5;left:0;top:0;display:none;width:60px;height:60px;border-radius:50%;font-size:32px;line-height:60px;padding:0;margin:0;border:0;cursor:pointer;background:radial-gradient(circle at 35% 30%,#fff7cf,#ffd34d 70%);box-shadow:0 4px 0 #b9860a,0 0 0 3px rgba(255,255,255,.75),0 0 18px rgba(255,210,60,.8);animation:seaChestPop .5s cubic-bezier(.2,1.6,.4,1) both,seaChestBob 1.4s ease-in-out .5s infinite;touch-action:manipulation}
+@keyframes seaChestPop{from{opacity:0;scale:.2}to{opacity:1;scale:1}}
+@keyframes seaChestBob{50%{margin-top:-6px}}
+#seaConfirm{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:rgba(5,25,40,.55);padding:24px}
+#seaConfirm .cbox{background:#fff;color:var(--ink);border-radius:18px;padding:18px 18px 14px;max-width:320px;width:100%;box-shadow:0 6px 0 rgba(39,64,90,.3);text-align:center}
+#seaConfirm h3{margin:0 0 8px;font-size:18px}
+#seaConfirm p{margin:0 0 8px;font-size:13px;line-height:1.4}
+#seaConfirm .cbtns{display:flex;gap:10px;margin-top:12px}
+#seaConfirm .cbtns button{flex:1;margin:0;border:0;border-radius:999px;padding:11px 8px;font-weight:800;font-size:14px;color:#fff;cursor:pointer;touch-action:manipulation}
+#seaMsg:empty{display:none}
 #seaMsg{margin:0;font-size:12px!important;font-weight:700;color:#e8f6fc;text-shadow:0 1px 2px rgba(0,0,0,.65);text-align:left;white-space:normal;line-height:1.25}
 /* anchor = Leave Sea */
 #sea button.seaLeave{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 10px);right:calc(env(safe-area-inset-right,0px) + 56px);display:flex;align-items:center;gap:6px;border-radius:999px;padding:5px 13px 5px 9px;font-weight:800;font-size:13px;letter-spacing:.6px;color:#fff;background:linear-gradient(#32678a,#1e4863);box-shadow:0 3px 0 #11304a,inset 0 0 0 2px rgba(255,255,255,.25)}
@@ -102,13 +119,19 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaTeamFloater button,#seaRaceFloater button{margin:0;border:0;cursor:pointer;border-radius:999px;padding:10px 18px;font-weight:800;font-size:14px;color:#fff;background:linear-gradient(#3a9ad9,#1e6fa8);box-shadow:0 4px 0 #124a72,0 0 0 2px rgba(255,255,255,.5);white-space:nowrap}
 #seaTeamFloater button.accept{background:linear-gradient(#45dcaa,#1fae8c);box-shadow:0 4px 0 #12806a,0 0 0 2px rgba(255,255,255,.5)}
 #seaRaceFloater button{background:linear-gradient(#f0b429,#d4890a);box-shadow:0 4px 0 #a06408,0 0 0 2px rgba(255,255,255,.55)}
-#seaTeamBar{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 52px);left:50%;transform:translateX(-50%);display:none;background:rgba(10,40,60,.72);color:#fff;border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;letter-spacing:.3px;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+#seaTeamBar{display:none;flex-direction:column;gap:3px;background:rgba(10,40,60,.6);color:#fff;border-radius:10px;padding:5px 8px 6px;font-size:11px;font-weight:700;pointer-events:auto;max-width:132px;min-width:92px;text-align:left}
+#seaTeamBar .tmHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#seaTeamBar .tmHead b{font-size:10px;letter-spacing:.6px;color:#ffe9a0}
+#seaTeamBar .tmList{display:flex;flex-direction:column;gap:1px;line-height:1.25}
+#seaTeamBar .tmList span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #seaRaceHud{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 82px);left:50%;transform:translateX(-50%);display:none;background:rgba(80,50,10,.78);color:#ffe9a0;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center;min-width:140px}
-#seaCountdown{position:absolute;z-index:7;left:50%;top:38%;transform:translate(-50%,-50%);display:none;pointer-events:none;font-weight:900;font-size:clamp(84px,26vw,160px);line-height:1;color:#fff;text-shadow:0 6px 0 rgba(160,100,8,.85),0 0 24px rgba(255,210,60,.9),0 0 3px #000}
+#seaCountdown{position:absolute;z-index:7;left:50%;top:38%;transform:translate(-50%,-50%);display:none;pointer-events:none;background:none!important;border:0;box-shadow:none;margin:0;padding:0;font-weight:900;font-size:clamp(84px,26vw,160px);line-height:1;color:#fff;-webkit-text-stroke:6px #b8740a;paint-order:stroke fill;text-shadow:none}
 #seaCountdown.pop{animation:seaCdPop .9s ease-out}
 @keyframes seaCdPop{0%{transform:translate(-50%,-50%) scale(1.9);opacity:0}25%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(.85);opacity:.15}}
-#seaRaceBoard{position:absolute;z-index:5;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 56px);display:none;background:rgba(10,30,45,.8);color:#fff;border-radius:12px;padding:8px 10px;font-size:11px;min-width:120px;max-width:160px}
-#seaRaceBoard b{display:block;margin-bottom:4px;color:#ffd24a}
+#seaRaceBoard{position:absolute;z-index:5;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 150px);display:none;background:rgba(10,30,45,.5);color:#fff;border-radius:10px;padding:5px 8px;font-size:10.5px;line-height:1.35;min-width:104px;max-width:150px;text-align:left;pointer-events:auto}
+#seaRaceBoard .rbRow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#seaRaceBoard .rbTg{display:block;margin:2px auto 0;padding:0 10px;border:0;border-radius:8px;background:rgba(255,255,255,.14);color:#fff;font-size:11px;line-height:14px;cursor:pointer;touch-action:manipulation}
+#seaRaceBoard b{display:block;margin-bottom:2px;color:#ffd24a;font-size:10.5px}
 
 #seaEmoRing{position:absolute;inset:0;z-index:6;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
 #seaEmoRing.open{display:block}
@@ -333,7 +356,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
       <p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;color:rgba(255,255,255,.9);text-align:center;text-shadow:0 1px 2px rgba(39,64,90,.45)"></p>
     </div>
     <div id="islandGems" style="display:none;margin-top:8px;gap:6px;justify-content:center;flex-wrap:wrap;pointer-events:none">
-      <span class="islChip">💎 <b id="islGemN">0</b></span><span class="islChip">🏝️ <b id="islIsletN">0</b></span><span class="islChip">⛵ <b id="islVoyN">0</b></span><span class="islChip" id="islandHp" style="display:none"></span>
+      <span class="islChip">🪙 <b id="islGoldN">0</b></span><span class="islChip">💎 <b id="islGemN">0</b></span><span class="islChip">🏝️ <b id="islIsletN">0</b></span><span class="islChip">⛵ <b id="islVoyN">0</b></span><span class="islChip" id="islandHp" style="display:none"></span>
     </div>
   </div>
   <canvas id="islandCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;box-shadow:none;touch-action:none;cursor:grab"></canvas>
@@ -351,9 +374,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
   <!-- top-left: connection dot + gems/islets/sailors, boat health, hint -->
   <div id="seaTop">
-    <div id="seaHud" class="seaPill"><span id="seaNetDot" title="Connection"></span><span id="seaHudTxt">Open Sea</span></div>
     <div id="seaHp" class="seaPill seaHpBox" aria-label="Boat health"><span>❤️</span><span class="hpTrack"><i id="seaHpFill"></i></span><b id="seaHpTxt">100%</b></div>
-    <p id="seaMsg">Sailing…</p>
+    <div id="seaInv" class="seaPill seaInvBox" aria-label="Cargo">
+      <div class="invRow" id="seaGoldRow"><span class="ic">🪙</span><span class="hpTrack"><i id="seaGoldFill"></i></span><b id="seaGoldTxt">0/20</b></div>
+      <div class="invRow" id="seaGemRow"><span class="ic">💎</span><span class="hpTrack"><i id="seaGemFill"></i></span><b id="seaGemTxt">0/20</b></div>
+    </div>
+    <div id="seaHud" class="seaPill"><span id="seaNetDot" title="Connection"></span><span id="seaHudTxt">👥 0</span></div>
+    <div id="seaTeamBar"></div>
+    <p id="seaMsg"></p>
   </div>
 
   <!-- top-right (next to the sound buttons): Leave Sea -->
@@ -371,12 +399,13 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div id="seaEmoRing"><div id="seaEmoShade"></div><div id="seaEmoItems"></div><div id="seaEmoHub">😊</div></div>
 
   <!-- teaming + racing UI -->
-  <div id="seaTeamBar"></div>
   <div id="seaRaceHud"></div>
   <div id="seaCountdown"></div>
   <div id="seaRaceBoard"></div>
   <div id="seaTeamFloater"></div>
   <div id="seaRaceFloater"></div>
+  <button type="button" id="seaChest" class="seaChest" aria-label="Open the island treasure chest">🧰</button>
+  <div id="seaConfirm"><div class="cbox"><h3>⚓ Leave the sea?</h3><p id="seaConfirmTxt"></p><div class="cbtns"><button type="button" id="seaConfirmNo" style="background:#3a9ad9">Stay</button><button type="button" id="seaConfirmYes" style="background:#c0392b">Leave</button></div></div></div>
 </div>
  
  <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
@@ -1747,7 +1776,7 @@ const seaVitNow=()=>seaVit?Math.min(seaVit.maxHp,seaVit.hp+(Date.now()-seaVit.t)
 function islRenderGems(){ // gems / islets / voyages are kept by the server and shown on the island every time
   const el=$('islandGems');if(!el)return;const g=ISL&&ISL.sea;
   if(!g){el.style.display='none';return}
-  el.style.display='flex';$('islGemN').textContent=g.treasures||0;$('islIsletN').textContent=g.islets||0;$('islVoyN').textContent=g.voyages||0}
+  el.style.display='flex';$('islGoldN').textContent=g.gold||0;$('islGemN').textContent=g.treasures||0;$('islIsletN').textContent=g.islets||0;$('islVoyN').textContent=g.voyages||0}
 function islRenderSail(){
   const b=$('islandSail');if(!b)return;
   const left=seaCdLeft();
@@ -1760,22 +1789,31 @@ setInterval(()=>{if(islOpen())islRenderSail()},500);
 // ---- HUD ----
 function seaUpdateHud(){
   if(!SEA)return;
-  const d=SEA.discoveries||{},n=(SEA.others&&SEA.others.length)||0,p=SEA.player||{};
-  const t=$('seaHudTxt');if(t)t.textContent='💎 '+(d.treasures||0)+' · 🏝️ '+(d.islets||0)+' · 👥 '+n;
+  const n=(SEA.others&&SEA.others.length)||0,p=SEA.player||{};
+  const t=$('seaHudTxt');if(t)t.textContent='👥 '+(n+1)+' sailing'; // everyone in the sea, you included
   const max=p.maxHp||100,hp=Math.max(0,p.hp==null?max:p.hp),pct=Math.max(0,Math.min(100,Math.round(100*hp/max)));
   const f=$('seaHpFill'),tx=$('seaHpTxt'),box=$('seaHp');
   if(f){f.style.width=pct+'%';f.className=pct<=25?'low':pct<=55?'mid':''}
   if(tx)tx.textContent=pct+'%';
   if(box)box.classList.toggle('low',pct<=25);
-  const cd=Math.round(((SEA.cfg&&SEA.cfg.seaCooldownMs)||30000)/1000);
-  seaSay(SEA.nearHome?'🏠 Tap DOCK to land':'⚔️ Attack · ⚓ Leave ('+cd+'s cd)');
+  // cargo bars: gold first, gems under it. A full hold turns the number red.
+  const inv=SEA.inv||{gems:0,gold:0,cap:20},cap=Math.max(1,inv.cap||20);
+  for(const [k,what] of[['Gold','gold'],['Gem','gems']]){
+    const v=inv[what]|0,fl=$('sea'+k+'Fill'),tt=$('sea'+k+'Txt'),row=$('sea'+k+'Row');
+    if(fl)fl.style.width=Math.min(100,100*v/cap).toFixed(0)+'%';
+    if(tt)tt.textContent=v+'/'+cap;
+    if(row)row.classList.toggle('full',v>=cap)}
+  seaSay(''); // no standing objectives: the line only shows short status notices (e.g. Reconnecting…)
 }
 function seaHandleEvents(evs){
   (evs||[]).forEach(e=>{
     if(e.t==='treasure')svx('popup','+'+(e.value||1)+' 💎');
+    else if(e.t==='chest')svx('popup','+'+(e.gold||0)+' 🪙');
+    else if(e.t==='deposit')toast('🏠 Deposited'+(e.gold?' '+e.gold+' 🪙':'')+(e.gems?' '+e.gems+' 💎':''));
+    else if(e.t==='full')toast(e.what==='gold'?'🪙 Gold bag full — deposit at home':'💎 Gem bag full — deposit at home');
     else if(e.t==='explore')toast('🏝️ '+e.name);
     else if(e.t==='kill')toast(e.loot?'⚔️ Sunk — loot it':'⚔️ Sunk');
-    else if(e.t==='loot')svx('popup','+'+(e.gained||1)+' 💎');
+    else if(e.t==='loot'){if(e.gems)svx('popup','+'+e.gems+' 💎');if(e.gold)svx('popup','+'+e.gold+' 🪙');if(!e.gems&&!e.gold)svx('popup','+'+(e.gained||1)+' 💎')}
     else if(e.t==='croc_hit')toast('🐊 Hit!');
     else if(e.t==='npc_hit')toast('⛵ Rammed!');
     else if(e.t==='croc_sink'||e.t==='npc_sink')toast('💥 Boat destroyed!');
@@ -1807,18 +1845,23 @@ function seaUpdateTeamRaceUI(){
   if(!SEA)return;
   const bar=$('seaTeamBar'),tf=$('seaTeamFloater'),rf=$('seaRaceFloater'),rh=$('seaRaceHud'),rb=$('seaRaceBoard');
   const me=SEA.player,racing=!!SEA.raceProgress;
-  // ---- team bar ----
+  // ---- team card (left side, under the HUD): title + Leave, then the members with the leader first ----
   if(bar){
     const has=SEA.team&&SEA.team.members&&SEA.team.members.length;
-    const sig=has?SEA.team.members.map(m=>(m.leader?'L':'')+m.uid+m.name).join('|'):'';
+    const mem=has?SEA.team.members.slice().sort((a,b)=>(b.leader?1:0)-(a.leader?1:0)):[];
+    const sig=mem.map(m=>(m.leader?'L':'')+m.uid+m.name).join('|');
     if(bar._sig!==sig){
-      bar._sig=sig;
+      bar._sig=sig;bar.innerHTML='';
       if(has){
-        const names=SEA.team.members.map(m=>(m.leader?'👑 ':'')+(m.name||'?')).join(' · ');
-        bar.style.display='flex';bar.style.alignItems='center';bar.style.gap='8px';bar.innerHTML='';
-        const sp=document.createElement('span');sp.textContent='👥 '+names;bar.appendChild(sp);
-        bar.appendChild(seaMakeBtn('Leave','',b=>seaUiCall('teamLeave',b,'sea:team',{op:'leave'},'Left team','Team'),'margin:0;border:0;cursor:pointer;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:800;color:#fff;background:#c0392b'));
-      }else{bar.style.display='none';bar.innerHTML=''}
+        bar.style.display='flex';
+        const head=document.createElement('div');head.className='tmHead';
+        const ti=document.createElement('b');ti.textContent='👥 TEAM';head.appendChild(ti);
+        head.appendChild(seaMakeBtn('Leave','',b=>seaUiCall('teamLeave',b,'sea:team',{op:'leave'},'Left team','Team'),'margin:0;border:0;cursor:pointer;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:800;color:#fff;background:#c0392b'));
+        bar.appendChild(head);
+        const list=document.createElement('div');list.className='tmList';
+        for(const m of mem){const sp=document.createElement('span');sp.textContent=(m.leader?'👑 ':'')+(m.name||'?');list.appendChild(sp)}
+        bar.appendChild(list);
+      }else bar.style.display='none';
     }
   }
   // ---- team floater (invite received / team up) ----
@@ -1867,16 +1910,19 @@ function seaUpdateTeamRaceUI(){
     if(rf.style.bottom!==want)rf.style.bottom=want;
   }
   seaRaceHudTick();
-  // ---- boards (rewritten only when the data changes) ----
+  // ---- leaderboard card: top 5, then a small toggle for the rest (rewritten only when the data changes) ----
   if(rb){
+    if(!rb._bound){rb._bound=true;rb._open=new Set();
+      rb.addEventListener('click',e=>{const t=e.target.closest('[data-tg]');if(!t)return;e.stopPropagation();
+        const id=t.getAttribute('data-tg');if(rb._open.has(id))rb._open.delete(id);else rb._open.add(id);rb._html='';seaUpdateTeamRaceUI()})}
     const withBoard=(SEA.races||[]).filter(r=>r.board&&r.board.length);
     const html=withBoard.map(r=>{
-      const title='<b>🏁 '+esc(r.name||r.id)+'</b>';
-      const rows=r.board.slice(0,8).map((row,i)=>'<div>'+(i+1)+'. '+esc(row.name||'?')+' — '+(row.ms/1000).toFixed(1)+'s</div>').join('');
-      return title+rows;
-    }).join('<hr style="border:0;border-top:1px solid rgba(255,255,255,.15);margin:6px 0">');
-    if(rb._html!==html){rb._html=html;rb.innerHTML=html;rb.style.display=html&&!racing?'block':'none'}
-    else rb.style.display=html&&!racing?'block':'none';
+      const open=rb._open.has(r.id),rows=r.board.map((row,i)=>'<div class="rbRow'+(i>=5?' more':'')+'"'+(i>=5&&!open?' style="display:none"':'')+'>'+(i+1)+'. '+esc(row.name||'?')+' — '+(row.ms/1000).toFixed(1)+'s</div>').join('');
+      const tg=r.board.length>5?'<button type="button" class="rbTg" data-tg="'+esc(r.id)+'" aria-label="'+(open?'Show fewer':'Show all')+'">'+(open?'▴':'▾')+'</button>':'';
+      return '<b>🏁 '+esc(r.name||r.id)+'</b>'+rows+tg;
+    }).join('<hr style="border:0;border-top:1px solid rgba(255,255,255,.15);margin:5px 0">');
+    if(rb._html!==html){rb._html=html;rb.innerHTML=html}
+    rb.style.display=html&&!racing?'block':'none';
   }
 }
 // Race clock + 3-2-1 countdown. Uses the server's relative 'elapsed' (negative while counting down) plus time since the snapshot
@@ -1888,9 +1934,11 @@ function seaRaceHudTick(){
   if(!pr){if(rh)rh.style.display='none';if(cd)cd.style.display='none';seaCdShown=null;return}
   const el=(pr.elapsed||0)+(Date.now()-(SEA._rcvAt||Date.now()));
   const race=(SEA.races||[]).find(r=>r.id===pr.raceId),nm=race&&race.name?race.name+' · ':'';
-  if(rh){rh.style.display='block';
-    const t=el<0?'Get ready…':'🏁 '+nm+'CP '+(pr.nextCp||0)+'/'+(pr.total||0)+' · '+(el/1000).toFixed(1)+'s';
-    if(rh._t!==t){rh._t=t;rh.textContent=el<0?'🏁 '+nm+'Get ready…':t}}
+  if(rh){
+    if(el<0){rh.style.display='none'} // during the 3-2-1 only the big number shows: no extra box
+    else{rh.style.display='block';
+      const t='🏁 '+nm+'CP '+(pr.nextCp||0)+'/'+(pr.total||0)+' · '+(el/1000).toFixed(1)+'s';
+      if(rh._t!==t){rh._t=t;rh.textContent=t}}}
   if(cd){
     let txt='';
     if(el<0)txt=String(Math.ceil(-el/1000));
@@ -1993,6 +2041,12 @@ function seaFrame(){
     if(h){const x=Math.max(74,Math.min(h.w-74,h.x)),y=Math.max(120,Math.min(h.h-200,h.y));
       dk.style.display='block';dk.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-100%)'}
     else if(dk.style.display!=='none')dk.style.display='none'}
+  const ck=$('seaChest');
+  if(ck){ // the treasure chest pops up over an island while you are stopped next to it (and it is ready)
+    const c=!seaLeaving?svx('getChest'):null;
+    if(c){const x=Math.max(40,Math.min(c.w-40,c.x)),y=Math.max(110,Math.min(c.h-190,c.y));
+      ck.style.display='block';ck.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-100%)';ck._id=c.id}
+    else if(ck.style.display!=='none'){ck.style.display='none';ck._id=null}}
   if(now-seaNetAt>300){seaNetAt=now;const a=window.SeaView?SeaView.stateAge():Infinity,dot=$('seaNetDot');if(dot)dot.className=a<800?'':a<2500?'mid':'bad'}
 }
 
@@ -2024,9 +2078,10 @@ async function enterSea(){
 }
 // switch to the island screen right away; the server's numbers are merged in afterwards by seaApplyReturn()
 function seaToIsland(msg){
+  try{$('seaConfirm').style.display='none'}catch(e){}
   stopSeaLoop();seaCloseEmo();seaResetStick();
   const g=SEA&&SEA.discoveries;
-  if(g&&ISL){const o=ISL.sea||{};ISL.sea={voyages:Math.max(o.voyages||0,g.voyages||0),treasures:Math.max(o.treasures||0,g.treasures||0),islets:Math.max(o.islets||0,g.islets||0)}} // show the gems at once
+  if(g&&ISL){const o=ISL.sea||{};ISL.sea={voyages:Math.max(o.voyages||0,g.voyages||0),treasures:Math.max(o.treasures||0,g.treasures||0),gold:Math.max(o.gold||0,g.gold||0),islets:Math.max(o.islets||0,g.islets||0)}} // show the gems at once
   SEA=null;try{SeaView.reset()}catch(e){}
   seaIntent={mx:0,my:0};seaRestoreChrome();show('island');
   try{islPaint()}catch(e){}
@@ -2058,7 +2113,7 @@ async function dockSea(){
     const gems=SEA&&SEA.discoveries?SEA.discoveries.treasures:0;
     seaToIsland('🏠 Docked at home. Your boat keeps repairing — sail out any time.');
     if(r&&(r.ok||r.err==='no_session'))seaApplyReturn(r);else islSilentRefresh().catch(()=>{});
-    toast('🏠 Docked · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||gems||0));
+    toast('🏠 Docked · 🪙 '+((ISL&&ISL.sea&&ISL.sea.gold)||0)+' · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||gems||0));
   }finally{seaLeaving=false}
 }
 // LEAVE SEA (anchor): instantly back on the island, then a cooldown before sailing out again
@@ -2069,7 +2124,7 @@ async function leaveSea(){
     if(pl)seaSetVit({hp:pl.hp,maxHp:pl.maxHp||100,regenPerSec:(pl.maxHp||100)/(((SEA.cfg&&SEA.cfg.regenSeconds)||30))});
     seaSetCd(cd); // optimistic: the server starts the same cooldown
     seaToIsland('⚓ Back on the island — your boat needs '+Math.round(cd/1000)+' s before the next trip.');
-    toast('⚓ Left the sea · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||0));
+    toast('⚓ Left the sea · 🪙 '+((ISL&&ISL.sea&&ISL.sea.gold)||0)+' · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||0));
     const r=await emitP('sea:return',{leave:true},5000);
     if(r&&r.ok)seaApplyReturn(r);
     else if(r&&r.err==='no_session'){seaSetCd(0);islSilentRefresh().catch(()=>{})} // voyage already gone on the server: no penalty
@@ -2078,7 +2133,26 @@ async function leaveSea(){
 }
 $('islandSail').onclick=e=>{e.stopPropagation();enterSea()};
 $('seaDock').onclick=e=>{e.stopPropagation();dockSea()};
-$('seaBack').onclick=e=>{e.stopPropagation();leaveSea()};
+$('seaChest').onclick=async e=>{
+  e.stopPropagation();const b=$('seaChest'),id=b._id;if(!id||seaBusy.chest)return;seaBusy.chest=true;b.disabled=true;
+  try{
+    const r=await emitP('sea:act',{op:'chest',id},4500);
+    if(!r){toast('⚠️ Slow connection — tap again');return}
+    if(r.sea)applySea(r.sea); // the '+n 🪙' popup comes from the chest event inside this snapshot
+    if(!r.ok)toast(({resting:'🧰 The chest is resting — come back later',full:'🪙 Gold bag full — deposit at home first',far:'Stop closer to the island',busy:'Wait a moment'})[r.err]||('Chest: '+(r.err||'failed')));
+  }finally{seaBusy.chest=false;b.disabled=false}};
+// LEAVE asks first: it starts the cooldown and costs half of the cargo
+function seaAskLeave(){
+  const cd=Math.round(((SEA&&SEA.cfg&&SEA.cfg.seaCooldownMs)||30000)/1000),inv=(SEA&&SEA.inv)||{gems:0,gold:0},lg=Math.ceil((inv.gems|0)/2),lc=Math.ceil((inv.gold|0)/2);
+  let t='You will have to wait <b>'+cd+' seconds</b> before you can sail out again.';
+  if(lg||lc)t+='<br><br>You will <b>lose half of your cargo</b> ('+(lc?lc+' 🪙':'')+(lc&&lg?' · ':'')+(lg?lg+' 💎':'')+'). It stays floating in the sea for other sailors to take. You keep the other half.';
+  else t+='<br><br>Your cargo is empty, so you lose nothing.';
+  $('seaConfirmTxt').innerHTML=t;$('seaConfirm').style.display='flex'}
+const seaCloseAsk=()=>{$('seaConfirm').style.display='none'};
+$('seaConfirmNo').onclick=e=>{e.stopPropagation();seaCloseAsk()};
+$('seaConfirmYes').onclick=e=>{e.stopPropagation();seaCloseAsk();leaveSea()};
+$('seaConfirm').onclick=e=>{if(e.target===$('seaConfirm'))seaCloseAsk()};
+$('seaBack').onclick=e=>{e.stopPropagation();seaAskLeave()};
 
 // ---- joystick (bottom centre) ----
 function seaResetStick(){const st=$('seaStick'),kn=$('seaKnob');if(st)st.classList.remove('on');if(kn)kn.style.transform='';seaStickId=null;seaSendIntent(0,0)}
