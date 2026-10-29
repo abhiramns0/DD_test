@@ -8,15 +8,17 @@
 // Geometry (zone rectangles), XP tables and structure definitions live in the catalogs below, NOT in each player's
 // document, so balance / layout changes never need a data migration, and new zones / structure kinds are added by
 // extending the catalogs.
-const SCHEMA=1,GRID={w:20,h:20},MAX_DECOR=24,MAX_STRUCTURES=200,MAX_AWARDS=48;
+// The map is now 44x40 and every region is several times bigger so players have room to build and decorate.
+// The starting 'corner' keeps its SE edge (and so the jetty / workshop / default decor coordinates) exactly where it was: old saves stay valid.
+const SCHEMA=1,GRID={w:44,h:40},MAX_DECOR=120,MAX_STRUCTURES=200,MAX_AWARDS=48;
 
 // ---- zones: rectangles on the grid. Only 'corner' starts unlocked (SE of the map). The rest unlock via totalXp.
 // Adjacent edges share borders so terrain joins without gaps when a zone unlocks.
 const ZONES={
-  corner:{id:'corner',x:12,y:11,w:7,h:7,shape:'rounded',start:true,xp:0},
-  basin: {id:'basin', x:6, y:10,w:6,h:7,shape:'rounded',start:false,xp:200},
-  ridge: {id:'ridge', x:12,y:4, w:7,h:7,shape:'rounded',start:false,xp:500},
-  wilds: {id:'wilds', x:2, y:2, w:10,h:9,shape:'rounded',start:false,xp:1000}};
+  corner:{id:'corner',x:5, y:4, w:14,h:14,shape:'rounded',start:true,xp:0},
+  basin: {id:'basin', x:2, y:18,w:11,h:14,shape:'rounded',start:false,xp:200},
+  ridge: {id:'ridge', x:19,y:4, w:14,h:14,shape:'rounded',start:false,xp:500},
+  wilds: {id:'wilds', x:19,y:18,w:22,h:20,shape:'rounded',start:false,xp:1000}};
 
 // Old zone id → new id (documents created before the corner redesign)
 const ZONE_ALIAS={core:'corner',north:'ridge',east:'ridge',west:'basin'};
@@ -59,7 +61,11 @@ const STRUCTURES={
   palm:{type:'palm',kind:'decor',label:'Palm tree',w:1,h:1,terrain:'land',removable:true,placeable:true},
   rock:{type:'rock',kind:'decor',label:'Rock',w:1,h:1,terrain:'land',removable:true,placeable:true},
   flag:{type:'flag',kind:'decor',label:'Flag',w:1,h:1,terrain:'land',removable:true,placeable:true},
-  crate:{type:'crate',kind:'decor',label:'Crate',w:1,h:1,terrain:'land',removable:true,placeable:true}};
+  crate:{type:'crate',kind:'decor',label:'Crate',w:1,h:1,terrain:'land',removable:true,placeable:true},
+  bush:{type:'bush',kind:'decor',label:'Berry bush',w:1,h:1,terrain:'land',removable:true,placeable:true},
+  flowers:{type:'flowers',kind:'decor',label:'Flowers',w:1,h:1,terrain:'land',removable:true,placeable:true},
+  barrel:{type:'barrel',kind:'decor',label:'Barrel',w:1,h:1,terrain:'land',removable:true,placeable:true},
+  lantern:{type:'lantern',kind:'decor',label:'Lantern post',w:1,h:1,terrain:'land',removable:true,placeable:true}};
 
 const isInt=n=>Number.isInteger(n);
 const inRect=(r,x,y)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h;
@@ -198,6 +204,8 @@ function stageXp(stage,solo,elapsedMs){
   return base+time}
 
 // ---- view model for the renderer: plain data only, no rules needed on the client
+// Treasury: how much gold the island can bank, by experience level (sea.js uses the same numbers when depositing).
+const goldCap=level=>200+50*Math.max(0,(level|0)-1);
 function view(doc,rev){
   const into=xpIntoLevel(doc.progress&&doc.progress.totalXp||0);
   const nextZones=Object.values(ZONES)
@@ -205,7 +213,7 @@ function view(doc,rev){
     .map(z=>({id:z.id,xp:z.xp||0}))
     .sort((a,b)=>a.xp-b.xp);
   return{v:SCHEMA,rev,grid:GRID,tiles:terrainGrid(doc.unlocked),
-             sea:{voyages:doc.sea&&doc.sea.voyages||0,treasures:doc.sea&&doc.sea.treasureCount||0,gold:doc.sea&&doc.sea.gold||0,islets:(doc.sea&&doc.sea.islets||[]).length},
+             sea:{voyages:doc.sea&&doc.sea.voyages||0,treasures:doc.sea&&doc.sea.treasureCount||0,gold:doc.sea&&doc.sea.gold||0,goldCap:goldCap(into.level),islets:(doc.sea&&doc.sea.islets||[]).length},
     zones:Object.values(ZONES).map(z=>({id:z.id,x:z.x,y:z.y,w:z.w,h:z.h,unlocked:doc.unlocked.includes(z.id),xp:z.xp||0})),
     structures:doc.structures.map(o=>{const d=STRUCTURES[o.type];return{id:o.id,type:o.type,kind:d.kind,label:d.label,x:o.x,y:o.y,w:d.w,h:d.h,removable:d.removable}}),
     placeable:Object.values(STRUCTURES).filter(d=>d.placeable).map(d=>({type:d.type,label:d.label})),
@@ -227,4 +235,4 @@ function applySeaDiscoveries(doc,disc){
 
 module.exports={SCHEMA,GRID,ZONES,ZONE_ALIAS,STRUCTURES,XP,MAX_DECOR,MAX_AWARDS,
   createDefault,normalize,apply,awardXp,stageXp,levelFromXp,xpIntoLevel,zonesForXp,
-  applySeaDiscoveries,view,terrainGrid,canStand,defaultStructures};
+  goldCap,applySeaDiscoveries,view,terrainGrid,canStand,defaultStructures};
