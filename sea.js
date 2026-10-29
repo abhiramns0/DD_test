@@ -65,6 +65,7 @@ const CFG = {
   chestMax: 10,
   dropTtlMs: 30000      // resources dropped by 'Leave Sea' stay floating this long
 };
+const treasuryCap = (level) => 200 + 50 * Math.max(0, (level | 0) - 1); // keep in sync with island.js goldCap()
 const invCap = (level) => CFG.invBase + CFG.invPerLevel * Math.max(0, (level | 0) - 1);
 
 const EMOJIS = ['👋', '😂', '🏳️', '⚔️', '🤝', '⛵', '💎', '🆘', '👍', '❤️'];
@@ -261,7 +262,8 @@ function ensureShared() {
     lastTreasureSpawn: Date.now(),
     playerWrecks: [],
     races: spawnRaces(sharedSeed),
-    teams: new Map() // teamId -> { id, leader, members:Set, invites:Map }
+    teams: new Map(), // teamId -> { id, leader, members:Set, names:Map }
+    teamInvites: new Map() // toUid -> { from, name, teamId|null, at }  (a team only exists once an invite was ACCEPTED)
   };
   return SHARED;
 }
@@ -594,7 +596,8 @@ function tick(session, dt, now) {
   session.nearHome = Math.hypot(p.x, p.y) <= CFG.returnR;
   if (session.nearHome && (session.inv.gems || session.inv.gold)) {
     const dep = deposit(session); // arriving at the home island banks everything you carry
-    session.events.push({ t: 'deposit', gems: dep.gems, gold: dep.gold, at: now });
+    if (dep.gems || dep.gold) session.events.push({ t: 'deposit', gems: dep.gems, gold: dep.gold, at: now });
+    if (dep.held) noteFull(session, 'treasury', now);
   }
   // race checkpoint progress
   const raceRes = raceTickPlayer(session.uid, p, now);
@@ -617,14 +620,17 @@ function noteFull(session, what, now) {
 }
 // moves everything carried into the saved totals (home island deposit / docking)
 function deposit(session) {
-  const g = session.inv.gems | 0, c = session.inv.gold | 0;
-  if (!g && !c) return { gems: 0, gold: 0 };
+  const g = session.inv.gems | 0;
+  const room = Math.max(0, treasuryCap(session.level) - (session.discoveries.gold | 0));
+  const c = Math.min(session.inv.gold | 0, room);      // the island treasury has a level-based limit
+  const held = (session.inv.gold | 0) - c;             // gold that did not fit stays in the boat
+  if (!g && !c) return { gems: 0, gold: 0, held };
   session.discoveries.treasureCount += g;
   session.discoveries.gold = (session.discoveries.gold | 0) + c;
   session.inv.gems = 0;
-  session.inv.gold = 0;
+  session.inv.gold = held;
   session.dirty = true;
-  return { gems: g, gold: c };
+  return { gems: g, gold: c, held };
 }
 
 function autoCollect(session, now) {
@@ -784,13 +790,14 @@ function returnHome(session, opts) {
   if (!session || session.status !== 'sailing') return { ok: false, err: 'not_sailing' };
   const mode = (opts && opts.mode) || 'dock';
   let dropped = null;
-  if (mode === 'dock') deposit(session);
+  let held = 0;
+  if (mode === 'dock') held = deposit(session).held;
   else if (mode === 'leave') {
     const dg = Math.ceil((session.inv.gems | 0) / 2);
     const dc = Math.ceil((session.inv.gold | 0) / 2);
     session.inv.gems -= dg;
     session.inv.gold -= dc;
-    deposit(session);
+    held = deposit(session).held;
     dropped = { gems: dg, gold: dc };
   } else if (mode === 'sunk') {
     dropped = { gems: session.inv.gems | 0, gold: session.inv.gold | 0 };
@@ -799,7 +806,7 @@ function returnHome(session, opts) {
   }
   session.status = 'docked';
   session.discoveries.voyages = (session.discoveries.voyages | 0) + 1;
-  return { ok: true, nearHome: !!session.nearHome, discoveries: packDiscoveries(session), dropped };
+  return { ok: true, nearHome: !!session.nearHome, discoveries: packDiscoveries(session), dropped, held };
 }
 
 // res: { gems, gold } carried by the boat (or a plain gem count); ttlMs: how long it floats (default wreckTtlMs)
@@ -954,6 +961,7 @@ function othersView(selfUid, selfX, selfY, voyagerList, now) {
       maxHp: v.player.maxHp || CFG.playerHp,
       clanId: v.clanId || null,
       team: sameTeam(selfUid, v.uid),
+      teamed: !!getTeamFor(v.uid),
       emoji: bubble,
       dist: Math.round(d)
     });
@@ -979,77 +987,98 @@ function getTeamFor(uid) {
   return null;
 }
 
+const INVITE_TTL_MS = 60000;
+function pendingInvite(uid) {
+  ensureShared();
+  const inv = SHARED.teamInvites.get(uid);
+  if (!inv) return null;
+  if (Date.now() - inv.at > INVITE_TTL_MS) {
+    SHARED.teamInvites.delete(uid);
+    return null;
+  }
+  return inv;
+}
+
+// Any team member (not only the leader) can invite. Inviting never creates a team: that only happens on accept.
 function teamInvite(fromUid, toUid, fromName, toName, fromPos, toPos) {
   ensureShared();
   if (!fromUid || !toUid || fromUid === toUid) return { ok: false, err: 'bad' };
   const d = Math.hypot((fromPos.x || 0) - (toPos.x || 0), (fromPos.y || 0) - (toPos.y || 0));
   if (d > CFG.teamInviteRange) return { ok: false, err: 'far' };
-  let team = getTeamFor(fromUid);
+  const team = getTeamFor(fromUid);
   if (team) {
-    if (team.leader !== fromUid) return { ok: false, err: 'not_leader' };
-    if (team.members.size >= CFG.partyMax) return { ok: false, err: 'full' };
     if (team.members.has(toUid)) return { ok: false, err: 'already' };
-  } else {
-    // create provisional team led by inviter
-    const id = 't_' + fromUid + '_' + Date.now();
-    team = { id, leader: fromUid, members: new Set([fromUid]), invites: new Map(), names: new Map([[fromUid, fromName || 'Sailor']]) };
-    SHARED.teams.set(id, team);
+    if (team.members.size >= CFG.partyMax) return { ok: false, err: 'full' };
   }
   if (getTeamFor(toUid)) return { ok: false, err: 'target_teamed' };
-  team.invites.set(toUid, { from: fromUid, name: fromName || 'Sailor', at: Date.now() });
-  team.names.set(fromUid, fromName || 'Sailor');
-  return { ok: true, teamId: team.id, toUid };
+  SHARED.teamInvites.set(toUid, { from: fromUid, name: fromName || 'Sailor', teamId: team ? team.id : null, at: Date.now() });
+  return { ok: true, teamId: team ? team.id : 'p_' + fromUid, toUid };
 }
 
 function teamAccept(uid, teamId, name) {
   ensureShared();
-  const team = SHARED.teams.get(teamId);
-  if (!team) return { ok: false, err: 'no_team' };
-  if (!team.invites.has(uid)) return { ok: false, err: 'no_invite' };
-  if (team.members.size >= CFG.partyMax) return { ok: false, err: 'full' };
-  if (getTeamFor(uid)) return { ok: false, err: 'already' };
-  team.invites.delete(uid);
+  const inv = pendingInvite(uid);
+  if (!inv) return { ok: false, err: 'no_invite' };
+  if (getTeamFor(uid)) {
+    SHARED.teamInvites.delete(uid);
+    return { ok: false, err: 'already' };
+  }
+  // the inviter's CURRENT team (they may have joined / left one since inviting)
+  let team = getTeamFor(inv.from);
+  if (!team) {
+    // (an inviter who left the sea had their invites removed in teamLeave)
+    const id = 't_' + inv.from + '_' + Date.now();
+    team = { id, leader: inv.from, members: new Set([inv.from]), names: new Map([[inv.from, inv.name || 'Sailor']]) };
+  }
+  if (team.members.size >= CFG.partyMax) {
+    SHARED.teamInvites.delete(uid);
+    return { ok: false, err: 'full' };
+  }
+  SHARED.teams.set(team.id, team);
+  SHARED.teamInvites.delete(uid);
   team.members.add(uid);
   team.names.set(uid, name || 'Sailor');
-  return { ok: true, teamId, leader: team.leader, members: [...team.members] };
+  return { ok: true, teamId: team.id, leader: team.leader, members: [...team.members] };
 }
 
-function teamDecline(uid, teamId) {
+function teamDecline(uid) {
   ensureShared();
-  if (teamId) {
-    const team = SHARED.teams.get(teamId);
-    if (!team) return { ok: false, err: 'no_team' };
-    if (!team.invites.has(uid)) return { ok: false, err: 'no_invite' };
-    team.invites.delete(uid);
-    // dissolve empty provisional teams (leader alone, no other members, no invites)
-    if (team.members.size <= 1 && team.invites.size === 0) {
-      // keep team if leader is still in it and sailing; only dissolve if truly empty of invites and single
-    }
-    return { ok: true };
-  }
-  // decline all pending invites
-  for (const team of SHARED.teams.values()) {
-    if (team.invites.has(uid)) team.invites.delete(uid);
-  }
+  SHARED.teamInvites.delete(uid);
   return { ok: true };
+}
+
+// removes uid from its team; a team of one is dissolved (so nobody is stuck in an empty team)
+function removeFromTeam(team, uid) {
+  team.members.delete(uid);
+  team.names.delete(uid);
+  if (team.members.size <= 1) {
+    const rest = [...team.members];
+    SHARED.teams.delete(team.id);
+    return { ok: true, dissolved: true, members: rest, leader: null };
+  }
+  if (team.leader === uid) team.leader = [...team.members][0]; // promote the next member
+  return { ok: true, leader: team.leader, members: [...team.members] };
 }
 
 function teamLeave(uid) {
   ensureShared();
+  SHARED.teamInvites.delete(uid);
+  for (const [to, inv] of SHARED.teamInvites) if (inv.from === uid) SHARED.teamInvites.delete(to);
   const team = getTeamFor(uid);
   if (!team) return { ok: false, err: 'no_team' };
-  team.members.delete(uid);
-  team.names.delete(uid);
-  team.invites.delete(uid);
-  if (team.members.size === 0) {
-    SHARED.teams.delete(team.id);
-    return { ok: true, dissolved: true };
-  }
-  if (team.leader === uid) {
-    // promote next member (first remaining)
-    team.leader = [...team.members][0];
-  }
-  return { ok: true, leader: team.leader, members: [...team.members] };
+  return removeFromTeam(team, uid);
+}
+
+// only the team leader can remove somebody
+function teamKick(leaderUid, targetUid) {
+  ensureShared();
+  const team = getTeamFor(leaderUid);
+  if (!team) return { ok: false, err: 'no_team' };
+  if (team.leader !== leaderUid) return { ok: false, err: 'not_leader' };
+  if (!targetUid || targetUid === leaderUid || !team.members.has(targetUid)) return { ok: false, err: 'no_target' };
+  const r = removeFromTeam(team, targetUid);
+  r.kicked = targetUid;
+  return r;
 }
 
 function teamInfo(uid) {
@@ -1211,16 +1240,12 @@ function viewWithOthers(session, others, now, opts) {
   const p = session.player;
   v.races = racesNear(p.x, p.y);
   v.team = teamInfo(session.uid);
+  v.selfUid = session.uid;
   // pending invite for this player
   ensureShared();
   v.teamInvite = null;
-  for (const team of SHARED.teams.values()) {
-    if (team.invites.has(session.uid)) {
-      const inv = team.invites.get(session.uid);
-      v.teamInvite = { teamId: team.id, from: inv.from, name: inv.name };
-      break;
-    }
-  }
+  const pinv = pendingInvite(session.uid);
+  if (pinv && !getTeamFor(session.uid)) v.teamInvite = { teamId: pinv.teamId || 'p_' + pinv.from, from: pinv.from, name: pinv.name };
   // race progress for self
   v.raceProgress = null;
   for (const race of SHARED.races || []) {
@@ -1265,6 +1290,7 @@ module.exports = {
   collectTreasure,
   openChest,
   invCap,
+  treasuryCap,
   returnHome,
   view,
   viewWithOthers,
@@ -1287,6 +1313,7 @@ module.exports = {
   teamAccept,
   teamDecline,
   teamLeave,
+  teamKick,
   teamInfo,
   raceJoin,
   raceTickPlayer,
