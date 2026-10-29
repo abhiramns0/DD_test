@@ -75,9 +75,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaGoldFill,#seaGemFill{display:block;height:100%;width:0;border-radius:99px;transition:width .25s linear}
 #seaGoldFill{background:linear-gradient(90deg,#f0b429,#ffe07a)}#seaGemFill{background:linear-gradient(90deg,#3aa8e8,#8fe3ff)}
 #sea .invRow.full b{color:#d6402b}
-#sea button.seaChest{position:absolute;z-index:5;left:0;top:0;display:none;width:60px;height:60px;border-radius:50%;font-size:32px;line-height:60px;padding:0;margin:0;border:0;cursor:pointer;background:radial-gradient(circle at 35% 30%,#fff7cf,#ffd34d 70%);box-shadow:0 4px 0 #b9860a,0 0 0 3px rgba(255,255,255,.75),0 0 18px rgba(255,210,60,.8);animation:seaChestPop .5s cubic-bezier(.2,1.6,.4,1) both,seaChestBob 1.4s ease-in-out .5s infinite;touch-action:manipulation}
-@keyframes seaChestPop{from{opacity:0;scale:.2}to{opacity:1;scale:1}}
-@keyframes seaChestBob{50%{margin-top:-6px}}
+#sea button.seaChest{position:absolute;z-index:5;left:0;top:0;display:none;width:60px;height:60px;border-radius:50%;font-size:32px;line-height:60px;padding:0;margin:0;border:0;cursor:pointer;transition:none!important;background:radial-gradient(circle at 35% 30%,#fff7cf,#ffd34d 70%);box-shadow:0 4px 0 #b9860a,0 0 0 3px rgba(255,255,255,.75),0 0 18px rgba(255,210,60,.8);touch-action:manipulation}
+#sea button.seaChest.pop{animation:seaChestPop .45s cubic-bezier(.2,1.5,.4,1) both}
+#sea button.seaChest .ci{display:block;animation:seaChestBob 1.4s ease-in-out .45s infinite}
+@keyframes seaChestPop{from{opacity:0;translate:0 38px;scale:.25}to{opacity:1;translate:0 0;scale:1}}
+@keyframes seaChestBob{50%{transform:translateY(-5px)}}
 #seaConfirm{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:rgba(5,25,40,.55);padding:24px}
 #seaConfirm .cbox{background:#fff;color:var(--ink);border-radius:18px;padding:18px 18px 14px;max-width:320px;width:100%;box-shadow:0 6px 0 rgba(39,64,90,.3);text-align:center}
 #seaConfirm h3{margin:0 0 8px;font-size:18px}
@@ -123,7 +125,10 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaTeamBar .tmHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 #seaTeamBar .tmHead b{font-size:10px;letter-spacing:.6px;color:#ffe9a0}
 #seaTeamBar .tmList{display:flex;flex-direction:column;gap:1px;line-height:1.25}
-#seaTeamBar .tmList span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#seaTeamBar .tmRow{display:flex;align-items:center;gap:5px}
+#seaTeamBar .tmName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#seaTeamBar .tmIc{flex:none;font-size:11px}
+#seaTeamBar .tmX{flex:none;margin:0;border:0;padding:0;width:17px;height:17px;border-radius:50%;background:rgba(192,57,43,.9);color:#fff;font-size:10px;line-height:17px;font-weight:800;cursor:pointer}
 #seaRaceHud{position:absolute;z-index:5;top:calc(env(safe-area-inset-top,0px) + 82px);left:50%;transform:translateX(-50%);display:none;background:rgba(80,50,10,.78);color:#ffe9a0;border-radius:12px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center;min-width:140px}
 #seaCountdown{position:absolute;z-index:7;left:50%;top:38%;transform:translate(-50%,-50%);display:none;pointer-events:none;background:none!important;border:0;box-shadow:none;margin:0;padding:0;font-weight:900;font-size:clamp(84px,26vw,160px);line-height:1;color:#fff;-webkit-text-stroke:6px #b8740a;paint-order:stroke fill;text-shadow:none}
 #seaCountdown.pop{animation:seaCdPop .9s ease-out}
@@ -141,6 +146,24 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaEmoRing .ei.hot{transform:scale(1.34);background:#fff6c9;box-shadow:0 4px 0 #e0b84a,0 0 0 3px #ffd34d}
 #seaEmoHub{position:absolute;width:66px;height:66px;margin:-33px 0 0 -33px;border-radius:50%;background:rgba(255,255,255,.2);border:2px dashed rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;font-size:32px;color:#fff;pointer-events:none}
 .islChip{background:rgba(255,255,255,.92);color:var(--ink);font-weight:800;font-size:13px;border-radius:999px;padding:4px 11px;box-shadow:0 2px 0 rgba(39,64,90,.22)}
+#islandHud{position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;display:flex;justify-content:center;pointer-events:none}
+#islandCard{width:min(92vw,300px);background:rgba(255,255,255,.93);color:var(--ink);border-radius:18px;padding:8px 14px 10px;box-shadow:0 4px 0 rgba(39,64,90,.28),0 0 0 2px rgba(255,255,255,.55);display:flex;flex-direction:column;align-items:stretch;gap:6px}
+#islandCard h1{margin:0;text-align:center;font-size:clamp(18px,5vw,24px);letter-spacing:1px;color:var(--ink);text-shadow:none}
+#islandProg{display:block;margin:0}
+#islandProg .ipRow{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:12px;margin-bottom:3px}
+#islandProg .ipTrack{height:10px;border-radius:999px;background:rgba(39,64,90,.16);overflow:hidden;border:1px solid rgba(39,64,90,.12)}
+#islandXpBar{height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s}
+#islandNext{margin:4px 0 0;font-size:11px;font-weight:700;color:rgba(39,64,90,.75);text-align:center;line-height:1.25}
+#island .ipGold{display:flex;align-items:center;gap:7px;font-weight:800;font-size:12px}
+#island .ipGold .ic{width:18px;text-align:center}
+#island .ipGold .ipTrack{flex:1;height:10px;border-radius:999px;background:rgba(39,64,90,.16);overflow:hidden;border:1px solid rgba(39,64,90,.12)}
+#islGoldFill{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#f0b429,#ffe07a);transition:width .4s}
+#island .ipGold b{min-width:62px;text-align:right}
+#island .ipGold.full b{color:#d6402b}
+#islandGems{display:none;gap:5px;justify-content:center;flex-wrap:wrap;pointer-events:none}
+#islandGems .islChip{background:rgba(39,64,90,.09);box-shadow:none;font-size:12px;padding:3px 9px}
+#islZoom{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);top:46%;z-index:4;display:flex;flex-direction:column;gap:8px;transform:translateY(-50%)}
+#islZoom button{width:40px;height:40px;margin:0;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.93);color:var(--ink);font-size:20px;font-weight:800;line-height:40px;cursor:pointer;box-shadow:0 3px 0 rgba(39,64,90,.28);touch-action:manipulation}
 #island.ov{padding:0!important;gap:0;justify-content:flex-start;align-items:stretch;backdrop-filter:none;-webkit-backdrop-filter:none;overflow:hidden;touch-action:none}
 #island #islandCv{position:absolute!important;left:0;top:0;width:100%!important;height:100%!important;z-index:0;display:block}
  
@@ -348,17 +371,21 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="ov" id="lbv" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">LEADERBOARD</h1><div class="seg modes" id="lbtabs"><button data-k="solo" class="on">SOLO</button><button data-k="mp">MULTIPLAYER</button></div><p class="hint" id="lbHint">Highest level reached</p><div id="lbList"></div><button class="sec" id="lbBack">BACK</button></div>
 
  <div class="ov" id="island" style="display:none;padding:0;gap:0;justify-content:flex-start;background:linear-gradient(#7ec8e3,#58b9dc)">
-  <div id="islandHud" style="position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 8px;display:flex;flex-direction:column;align-items:center;pointer-events:none">
-    <h1 style="font-size:clamp(22px,6vw,36px);margin:0;text-shadow:0 3px 0 var(--ink)">MY ISLAND</h1>
-    <div id="islandProg" style="width:min(46vw,210px);margin-top:8px;margin-left:auto;margin-right:auto">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;font-weight:800;color:#fff;font-size:13px;margin-bottom:4px;text-shadow:0 1px 2px rgba(39,64,90,.5)"><span id="islandLvl">LVL 1</span><span id="islandXpTxt">0 XP</span></div>
-      <div style="height:10px;border-radius:999px;background:rgba(39,64,90,.25);overflow:hidden;border:1px solid rgba(255,255,255,.45)"><div id="islandXpBar" style="height:100%;width:0%;background:linear-gradient(90deg,#5fcf70,#ffd34d);border-radius:999px;transition:width .4s ease"></div></div>
-      <p id="islandNext" style="margin:6px 0 0;font-size:12px;font-weight:700;color:rgba(255,255,255,.9);text-align:center;text-shadow:0 1px 2px rgba(39,64,90,.45)"></p>
-    </div>
-    <div id="islandGems" style="display:none;margin-top:8px;gap:6px;justify-content:center;flex-wrap:wrap;pointer-events:none">
-      <span class="islChip">🪙 <b id="islGoldN">0</b></span><span class="islChip">💎 <b id="islGemN">0</b></span><span class="islChip">🏝️ <b id="islIsletN">0</b></span><span class="islChip">⛵ <b id="islVoyN">0</b></span><span class="islChip" id="islandHp" style="display:none"></span>
+  <div id="islandHud">
+    <div id="islandCard">
+      <h1>MY ISLAND</h1>
+      <div id="islandProg">
+        <div class="ipRow"><span id="islandLvl">LVL 1</span><span id="islandXpTxt">0 XP</span></div>
+        <div class="ipTrack"><div id="islandXpBar"></div></div>
+        <p id="islandNext"></p>
+      </div>
+      <div id="islandGold" class="ipGold"><span class="ic">🪙</span><span class="ipTrack"><i id="islGoldFill"></i></span><b id="islGoldTxt">0/200</b></div>
+      <div id="islandGems">
+        <span class="islChip">💎 <b id="islGemN">0</b></span><span class="islChip">🏝️ <b id="islIsletN">0</b></span><span class="islChip">⛵ <b id="islVoyN">0</b></span><span class="islChip" id="islandHp" style="display:none"></span>
+      </div>
     </div>
   </div>
+  <div id="islZoom"><button type="button" id="islZoomIn" aria-label="Zoom in">＋</button><button type="button" id="islZoomOut" aria-label="Zoom out">－</button><button type="button" id="islRecenter" aria-label="Centre on my island">◎</button></div>
   <canvas id="islandCv" style="position:absolute;inset:0;width:100%;height:100%;border-radius:0;box-shadow:none;touch-action:none;cursor:grab"></canvas>
   <div style="position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;background:linear-gradient(transparent,rgba(39,64,90,.35))">
     <p class="hint" id="islandMsg" style="color:#fff;text-shadow:0 1px 2px rgba(39,64,90,.6);margin:0">Loading your island…</p>
@@ -404,8 +431,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div id="seaRaceBoard"></div>
   <div id="seaTeamFloater"></div>
   <div id="seaRaceFloater"></div>
-  <button type="button" id="seaChest" class="seaChest" aria-label="Open the island treasure chest">🧰</button>
-  <div id="seaConfirm"><div class="cbox"><h3>⚓ Leave the sea?</h3><p id="seaConfirmTxt"></p><div class="cbtns"><button type="button" id="seaConfirmNo" style="background:#3a9ad9">Stay</button><button type="button" id="seaConfirmYes" style="background:#c0392b">Leave</button></div></div></div>
+  <button type="button" id="seaChest" class="seaChest" aria-label="Open the island treasure chest"><span class="ci">🧰</span></button>
+  <div id="seaConfirm"><div class="cbox"><h3 id="seaConfirmH">⚓ Leave the sea?</h3><p id="seaConfirmTxt"></p><div class="cbtns"><button type="button" id="seaConfirmNo" style="background:#3a9ad9">Stay</button><button type="button" id="seaConfirmYes" style="background:#c0392b">Leave</button></div></div></div>
 </div>
  
  <div class="ov" id="help" style="display:none"><h1 style="font-size:clamp(30px,8vw,48px)">HOW TO PLAY</h1><div class="hbox">
@@ -494,7 +521,54 @@ function mPlay(n,t){
  if(lp>=1&&s%2===1){mPluck(c.t[(s>>1)%3]+tr,t,.35,.04);mHat(t,.03)}
  if(lp>=2){if(s===0||s===4)mKick(t,.22);if(s%2===0&&s)mHat(t,.015,.03)}
 }
+// ---- open-sea theme: an ORIGINAL swashbuckling tune (D minor, rolling 6/8, fiddle-like lead, driving strings and drums).
+// 16 bars; each loop adds layers (bass pulse -> drums -> octave brass) and loops 3-4 lift the whole tune up a tone, so it keeps rising.
+// Written from scratch for this game: it deliberately avoids the melodies/rhythms of any existing film score.
+let seaMus=false,mStepS=0;const SSTEP=0.19; // one eighth note; 6 eighths = a dotted-quarter pulse
+const SCH={Dm:{b:38,t:[62,65,69]},Bb:{b:34,t:[58,62,65]},C:{b:36,t:[60,64,67]},Gm:{b:43,t:[55,58,62]},A:{b:33,t:[57,61,64]},F:{b:41,t:[57,60,65]}};
+const SPROG=['Dm','Dm','Bb','C','Dm','Dm','Gm','A','F','C','Gm','Dm','Bb','F','A','A'];
+const SMEL=[
+ [74,0,0,77,0,0,81,0,0,77,0,74],[76,0,0,77,0,76,74,0,0,0,0,0],[82,0,0,79,0,0,77,0,0,74,0,77],[79,0,0,76,0,0,72,0,76,79,0,0],
+ [74,0,77,0,81,0,86,0,0,84,0,81],[82,0,0,81,0,79,77,0,0,0,0,0],[79,0,82,0,86,0,0,0,84,0,82,0],[81,0,0,76,0,0,73,0,0,0,0,0],
+ [81,0,0,84,0,0,89,0,0,84,0,81],[88,0,0,84,0,0,79,0,0,84,0,88],[86,0,0,82,0,0,79,0,82,86,0,0],[86,0,84,0,82,0,81,0,0,77,0,0],
+ [82,0,0,86,0,0,89,0,0,86,0,82],[84,0,0,81,0,0,77,0,0,81,0,84],[85,0,0,81,0,0,76,0,0,81,0,85],[88,0,86,0,85,0,81,0,0,0,0,0]];
+function mLead(m,t,d,v){ // fiddle / reedy lead: saw + soft low-pass + gentle vibrato
+ const o=ac.createOscillator(),l=ac.createOscillator(),lg=ac.createGain(),fl=ac.createBiquadFilter(),e=ac.createGain();
+ o.type='sawtooth';o.frequency.value=mf(m);l.frequency.value=5.2;lg.gain.value=mf(m)*.006;l.connect(lg);lg.connect(o.frequency);
+ fl.type='lowpass';fl.frequency.value=2300;fl.Q.value=.7;
+ e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(v,t+.03);e.gain.setValueAtTime(v*.85,t+d*.7);e.gain.exponentialRampToValueAtTime(.0001,t+d);
+ o.connect(fl);fl.connect(e);e.connect(mus);e.connect(dsend);o.start(t);l.start(t);o.stop(t+d+.05);l.stop(t+d+.05)}
+function mBrass(ms,t,d,v){ // swelling brass chord
+ ms.forEach(m=>{const o=ac.createOscillator(),fl=ac.createBiquadFilter(),e=ac.createGain();o.type='sawtooth';o.frequency.value=mf(m);o.detune.value=(Math.random()-.5)*14;
+  fl.type='lowpass';fl.frequency.setValueAtTime(500,t);fl.frequency.linearRampToValueAtTime(1900,t+d*.55);
+  e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(v,t+d*.5);e.gain.exponentialRampToValueAtTime(.0001,t+d);
+  o.connect(fl);fl.connect(e);e.connect(mus);o.start(t);o.stop(t+d+.05)})}
+function mTom(t,v,f=90){const o=ac.createOscillator(),e=ac.createGain();o.frequency.setValueAtTime(f*1.6,t);o.frequency.exponentialRampToValueAtTime(f,t+.1);
+ e.gain.setValueAtTime(v,t);e.gain.exponentialRampToValueAtTime(.0001,t+.28);o.connect(e);e.connect(mus);o.start(t);o.stop(t+.3)}
+function mPlaySea(n,t){
+ const s=n%12,bar=Math.floor(n/12),bi=bar%16,lp=Math.floor(bar/16)%4,tr=[0,0,2,2][lp],c=SCH[SPROG[bi]],q=SSTEP;
+ if(s===0)mPad(c.t.map(x=>x+tr),t,q*11,.028);
+ if(s===0||s===6)mBass(c.b+tr,t,q*4,.22);
+ if(s===3||s===9)mBass(c.b+tr+(s===3?7:12),t,q*2.5,.14);
+ const arp=[0,1,2,1];                                   // rolling strings: chord tones on every 3rd (and, later, every 2nd) eighth
+ if(s%3===0)mPluck(c.t[arp[(s/3)|0]]+tr,t,.4,.07);
+ if(lp>=1&&(s===2||s===5||s===8||s===11))mPluck(c.t[(s>>2)%3]+tr+12,t,.28,.04);
+ const m=SMEL[bi][s];
+ if(m){mLead(m+tr,t,q*3.2,lp===0?.075:.09);if(lp>=2)mBrass([m+tr-12,m+tr-5],t,q*5,.035)}
+ if(lp>=1){if(s===0||s===6)mKick(t,.2);if(s===3||s===9)mHat(t,.05,.09)}
+ if(lp>=2){mHat(t,.014,.03);if(s===0)mTom(t,.16,80)}
+ if(bi===7||bi===15){if(s>=9&&lp>=1)mTom(t,.12+(s-9)*.03,100-(s-9)*8)}   // drum roll into the repeat
+ if(bi===15&&s===0&&lp===3)mBrass(c.t.map(x=>x+tr),t,q*11,.05)
+}
+function setSeaMusic(on){
+ on=!!on;if(on===seaMus)return;seaMus=on;mStepS=0;
+ if(!ac)return;
+ const t=ac.currentTime;mus.gain.cancelScheduledValues(t);mus.gain.setValueAtTime(mus.gain.value,t);mus.gain.linearRampToValueAtTime(.0001,t+.18);mus.gain.linearRampToValueAtTime(MUSIC_VOL,t+1.1); // short crossfade
+ mNext=t+.25;mStep=Math.ceil(mStep/8)*8;
+ if(mDL)mDL.delayTime.setTargetAtTime(on?SSTEP*3:STEP*3,t,.1);
+ if(on&&!musicOff)startMusic()}
 function mTick(){if(!ac||musicOff)return;if(mNext<ac.currentTime-.2)mNext=ac.currentTime+.05;
+ if(seaMus){while(mNext<ac.currentTime+.35){try{mPlaySea(mStepS,mNext)}catch(e){}mNext+=SSTEP;mStepS++}return}
  while(mNext<ac.currentTime+.35){if(mStep%8===0){const b=Math.round(pickBpm()/2)*2;if(b!==mBpm){mBpm=b;STEP=60/b/2;if(mDL)mDL.delayTime.setValueAtTime(STEP*3,mNext)}} // tempo only changes on a bar line, and the echo follows it: nothing goes off-beat
   try{mPlay(mStep,mNext)}catch(e){}mNext+=STEP;mStep++}}
 function startMusic(){if(!ac||musicOff||mTimer)return;mStep=Math.ceil(mStep/8)*8;mNext=ac.currentTime+.1;mTimer=setInterval(mTick,100);mTick()}
@@ -1773,10 +1847,15 @@ const seaCdLeft=()=>Math.max(0,seaCdUntil-Date.now());
 function seaSetCd(ms){seaCdUntil=ms>0?Date.now()+ms:0;try{islRenderSail()}catch(e){}}
 function seaSetVit(v){if(v&&typeof v.hp==='number')seaVit={hp:v.hp,maxHp:v.maxHp||100,regen:v.regenPerSec||(v.maxHp||100)/30,t:Date.now()}}
 const seaVitNow=()=>seaVit?Math.min(seaVit.maxHp,seaVit.hp+(Date.now()-seaVit.t)/1000*seaVit.regen):null;
-function islRenderGems(){ // gems / islets / voyages are kept by the server and shown on the island every time
+function islRenderGems(){ // gold / gems / islets / voyages are kept by the server and shown on the island every time
   const el=$('islandGems');if(!el)return;const g=ISL&&ISL.sea;
+  const gb=$('islandGold');
+  if(gb){ // gold treasury bar: banked gold / limit (the limit grows with the experience level)
+    if(!g)gb.style.display='none';
+    else{gb.style.display='flex';const cap=Math.max(1,g.goldCap||200),v=g.gold||0;
+      $('islGoldFill').style.width=Math.min(100,100*v/cap).toFixed(0)+'%';$('islGoldTxt').textContent=v+'/'+cap;gb.classList.toggle('full',v>=cap)}}
   if(!g){el.style.display='none';return}
-  el.style.display='flex';$('islGoldN').textContent=g.gold||0;$('islGemN').textContent=g.treasures||0;$('islIsletN').textContent=g.islets||0;$('islVoyN').textContent=g.voyages||0}
+  el.style.display='flex';$('islGemN').textContent=g.treasures||0;$('islIsletN').textContent=g.islets||0;$('islVoyN').textContent=g.voyages||0}
 function islRenderSail(){
   const b=$('islandSail');if(!b)return;
   const left=seaCdLeft();
@@ -1810,7 +1889,7 @@ function seaHandleEvents(evs){
     if(e.t==='treasure')svx('popup','+'+(e.value||1)+' 💎');
     else if(e.t==='chest')svx('popup','+'+(e.gold||0)+' 🪙');
     else if(e.t==='deposit')toast('🏠 Deposited'+(e.gold?' '+e.gold+' 🪙':'')+(e.gems?' '+e.gems+' 💎':''));
-    else if(e.t==='full')toast(e.what==='gold'?'🪙 Gold bag full — deposit at home':'💎 Gem bag full — deposit at home');
+    else if(e.t==='full')toast(e.what==='treasury'?'🏦 Island treasury full — level up to store more gold':e.what==='gold'?'🪙 Gold bag full — deposit at home':'💎 Gem bag full — deposit at home');
     else if(e.t==='explore')toast('🏝️ '+e.name);
     else if(e.t==='kill')toast(e.loot?'⚔️ Sunk — loot it':'⚔️ Sunk');
     else if(e.t==='loot'){if(e.gems)svx('popup','+'+e.gems+' 💎');if(e.gold)svx('popup','+'+e.gold+' 🪙');if(!e.gems&&!e.gold)svx('popup','+'+(e.gained||1)+' 💎')}
@@ -1849,7 +1928,7 @@ function seaUpdateTeamRaceUI(){
   if(bar){
     const has=SEA.team&&SEA.team.members&&SEA.team.members.length;
     const mem=has?SEA.team.members.slice().sort((a,b)=>(b.leader?1:0)-(a.leader?1:0)):[];
-    const sig=mem.map(m=>(m.leader?'L':'')+m.uid+m.name).join('|');
+    const sig=(SEA.team?SEA.team.leader:'')+'#'+(SEA.selfUid||'')+'#'+mem.map(m=>m.uid+m.name).join('|');
     if(bar._sig!==sig){
       bar._sig=sig;bar.innerHTML='';
       if(has){
@@ -1859,7 +1938,14 @@ function seaUpdateTeamRaceUI(){
         head.appendChild(seaMakeBtn('Leave','',b=>seaUiCall('teamLeave',b,'sea:team',{op:'leave'},'Left team','Team'),'margin:0;border:0;cursor:pointer;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:800;color:#fff;background:#c0392b'));
         bar.appendChild(head);
         const list=document.createElement('div');list.className='tmList';
-        for(const m of mem){const sp=document.createElement('span');sp.textContent=(m.leader?'👑 ':'')+(m.name||'?');list.appendChild(sp)}
+        const iAmLeader=SEA.team.leader===SEA.selfUid;
+        for(const m of mem){
+          const row=document.createElement('div');row.className='tmRow';
+          const nm=document.createElement('span');nm.className='tmName';nm.textContent=m.name||'?';row.appendChild(nm);
+          if(m.leader){const cr=document.createElement('span');cr.className='tmIc';cr.textContent='👑';cr.title='Team leader';row.appendChild(cr)}
+          else if(iAmLeader&&m.uid!==SEA.selfUid){ // only the leader can remove somebody, after a confirmation
+            row.appendChild(seaMakeBtn('✕','tmX',b=>seaAsk('Remove from team?','Remove <b>'+esc(m.name||'this sailor')+'</b> from your team?','Remove','Cancel',()=>seaUiCall('teamKick'+m.uid,null,'sea:team',{op:'kick',uid:m.uid},(m.name||'Sailor')+' removed','Team')),''))}
+          list.appendChild(row)}
         bar.appendChild(list);
       }else bar.style.display='none';
     }
@@ -1870,11 +1956,9 @@ function seaUpdateTeamRaceUI(){
     if(SEA.teamInvite)sig='inv:'+SEA.teamInvite.teamId;
     else if(SEA.others&&SEA.others.length){
       const range=(SEA.mp&&SEA.mp.teamInviteRange)||160;
-      near=SEA.others.find(o=>o.dist<=range);
-      const myId=typeof UID!=='undefined'?UID:'';
-      const canInvite=!SEA.team||(SEA.team.leader===myId);
-      const teammate=near&&SEA.team&&SEA.team.members&&SEA.team.members.some(m=>m.uid===near.uid);
-      if(near&&canInvite&&!teammate)sig='up:'+near.uid;
+      const full=SEA.team&&SEA.team.members&&SEA.team.members.length>=((SEA.mp&&SEA.mp.partyMax)||4);
+      near=full?null:SEA.others.find(o=>o.dist<=range&&!o.teamed&&!o.team); // nearest sailor who is not in any team yet
+      if(near)sig='up:'+near.uid;
     }
     if(tf._sig!==sig){
       tf._sig=sig;tf.innerHTML='';
@@ -2045,8 +2129,10 @@ function seaFrame(){
   if(ck){ // the treasure chest pops up over an island while you are stopped next to it (and it is ready)
     const c=!seaLeaving?svx('getChest'):null;
     if(c){const x=Math.max(40,Math.min(c.w-40,c.x)),y=Math.max(110,Math.min(c.h-190,c.y));
-      ck.style.display='block';ck.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-100%)';ck._id=c.id}
-    else if(ck.style.display!=='none'){ck.style.display='none';ck._id=null}}
+      ck.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) translate(-50%,-100%)'; // position first, THEN show: it never travels in from a corner
+      if(ck.style.display!=='block'){ck.style.display='block';ck.classList.remove('pop');void ck.offsetWidth;ck.classList.add('pop')} // upward pop out of the chest
+      ck._id=c.id}
+    else if(ck.style.display!=='none'){ck.style.display='none';ck.classList.remove('pop');ck._id=null}}
   if(now-seaNetAt>300){seaNetAt=now;const a=window.SeaView?SeaView.stateAge():Infinity,dot=$('seaNetDot');if(dot)dot.className=a<800?'':a<2500?'mid':'bad'}
 }
 
@@ -2068,7 +2154,7 @@ async function enterSea(){
       show('sea');
       try{$('lside').style.display='none';$('setBtn').style.display='none';$('home').style.display='none';$('side').style.display='flex';$('mute').style.display='flex';$('music').style.display='flex'}catch(e){}
       seaUpdateHud();
-      startSeaLoop();seaEmitIntent();return}
+      startSeaLoop();seaEmitIntent();setSeaMusic(true);return}
     if(r&&r.err==='cooldown'){seaSetCd(r.waitMs||0);seaSetVit(r.vitals);islSay('Your boat is being repaired — you can sail out again soon.');toast('⏳ Boat repairing — '+Math.ceil((r.waitMs||0)/1000)+' s');return}
     if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}continue}
     if(r&&r.err==='busy'){await new Promise(x=>setTimeout(x,900));continue}
@@ -2078,6 +2164,7 @@ async function enterSea(){
 }
 // switch to the island screen right away; the server's numbers are merged in afterwards by seaApplyReturn()
 function seaToIsland(msg){
+  setSeaMusic(false); // back to the island theme
   try{$('seaConfirm').style.display='none'}catch(e){}
   stopSeaLoop();seaCloseEmo();seaResetStick();
   const g=SEA&&SEA.discoveries;
@@ -2113,6 +2200,7 @@ async function dockSea(){
     const gems=SEA&&SEA.discoveries?SEA.discoveries.treasures:0;
     seaToIsland('🏠 Docked at home. Your boat keeps repairing — sail out any time.');
     if(r&&(r.ok||r.err==='no_session'))seaApplyReturn(r);else islSilentRefresh().catch(()=>{});
+    if(r&&r.held)toast('🏦 Island treasury full — '+r.held+' 🪙 could not be stored');
     toast('🏠 Docked · 🪙 '+((ISL&&ISL.sea&&ISL.sea.gold)||0)+' · 💎 '+((ISL&&ISL.sea&&ISL.sea.treasures)||gems||0));
   }finally{seaLeaving=false}
 }
@@ -2131,7 +2219,10 @@ async function leaveSea(){
     else if(!r)islSilentRefresh().catch(()=>{});
   }finally{seaLeaving=false}
 }
-$('islandSail').onclick=e=>{e.stopPropagation();enterSea()};
+$('islZoomIn').onclick=e=>{e.stopPropagation();if(window.IslandView)IslandView.zoomBy(1.3)};
+$('islZoomOut').onclick=e=>{e.stopPropagation();if(window.IslandView)IslandView.zoomBy(1/1.3)};
+$('islRecenter').onclick=e=>{e.stopPropagation();if(window.IslandView)IslandView.recenter()};
+$('islandSail').onclick=e=>{e.stopPropagation();initAudio();enterSea()};
 $('seaDock').onclick=e=>{e.stopPropagation();dockSea()};
 $('seaChest').onclick=async e=>{
   e.stopPropagation();const b=$('seaChest'),id=b._id;if(!id||seaBusy.chest)return;seaBusy.chest=true;b.disabled=true;
@@ -2142,15 +2233,17 @@ $('seaChest').onclick=async e=>{
     if(!r.ok)toast(({resting:'🧰 The chest is resting — come back later',full:'🪙 Gold bag full — deposit at home first',far:'Stop closer to the island',busy:'Wait a moment'})[r.err]||('Chest: '+(r.err||'failed')));
   }finally{seaBusy.chest=false;b.disabled=false}};
 // LEAVE asks first: it starts the cooldown and costs half of the cargo
+let seaAskYes=null;
+function seaAsk(title,html,yesLabel,noLabel,onYes){seaAskYes=onYes;$('seaConfirmH').textContent=title;$('seaConfirmTxt').innerHTML=html;$('seaConfirmYes').textContent=yesLabel;$('seaConfirmNo').textContent=noLabel;$('seaConfirm').style.display='flex'}
 function seaAskLeave(){
   const cd=Math.round(((SEA&&SEA.cfg&&SEA.cfg.seaCooldownMs)||30000)/1000),inv=(SEA&&SEA.inv)||{gems:0,gold:0},lg=Math.ceil((inv.gems|0)/2),lc=Math.ceil((inv.gold|0)/2);
   let t='You will have to wait <b>'+cd+' seconds</b> before you can sail out again.';
   if(lg||lc)t+='<br><br>You will <b>lose half of your cargo</b> ('+(lc?lc+' 🪙':'')+(lc&&lg?' · ':'')+(lg?lg+' 💎':'')+'). It stays floating in the sea for other sailors to take. You keep the other half.';
   else t+='<br><br>Your cargo is empty, so you lose nothing.';
-  $('seaConfirmTxt').innerHTML=t;$('seaConfirm').style.display='flex'}
-const seaCloseAsk=()=>{$('seaConfirm').style.display='none'};
+  seaAsk('⚓ Leave the sea?',t,'Leave','Stay',()=>leaveSea())}
+const seaCloseAsk=()=>{$('seaConfirm').style.display='none';seaAskYes=null};
 $('seaConfirmNo').onclick=e=>{e.stopPropagation();seaCloseAsk()};
-$('seaConfirmYes').onclick=e=>{e.stopPropagation();seaCloseAsk();leaveSea()};
+$('seaConfirmYes').onclick=e=>{e.stopPropagation();const f=seaAskYes;seaCloseAsk();if(f)f()};
 $('seaConfirm').onclick=e=>{if(e.target===$('seaConfirm'))seaCloseAsk()};
 $('seaBack').onclick=e=>{e.stopPropagation();seaAskLeave()};
 
@@ -2269,7 +2362,8 @@ socket.on('sea:team',d=>{
   if(!d||!seaOpen())return;
   if(d.op==='invite')toast('🤝 '+(d.name||'Sailor')+' invited you to team — accept nearby');
   else if(d.op==='joined')toast('👥 '+(d.name||'Sailor')+' joined the team');
-  else if(d.op==='left')toast('👤 Sailor left the team');
+  else if(d.op==='left')toast('👤 '+(d.name||'A sailor')+' left the team');
+  else if(d.op==='kicked')toast('👢 '+(d.by||'The leader')+' removed you from the team');
 });
 socket.on('connect',()=>{if(seaOpen())setTimeout(()=>seaWatchdog(true),400)}); // re-attach the voyage to the new socket right after a reconnect
 window.addEventListener('online',()=>{if(seaOpen())seaWatchdog(true)});
