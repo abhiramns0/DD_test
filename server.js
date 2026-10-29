@@ -67,9 +67,7 @@ function seaEnd(uid,slot,now,o){
   // leave any sea team + abandon in-progress race
   try{
     const tl=Sea.teamLeave(uid);
-    if(tl&&tl.ok&&!tl.dissolved){
-      for(const m of tl.members||[])seaEmitTo(m,'sea:team',{op:'left',uid,leader:tl.leader,members:tl.members});
-    }
+    if(tl&&tl.ok)for(const m of tl.members||[])seaEmitTo(m,'sea:team',{op:'left',uid,leader:tl.leader,members:tl.members});
   }catch(e){}
   try{Sea.raceAbandon(uid)}catch(e){}
   seaStoreHp(uid,o.sunk?0:p.hp,now);
@@ -345,13 +343,19 @@ io.on('connection',s=>{
     }
     if(d.op==='leave'){
       const r=Sea.teamLeave(identUid);
-      if(r.ok&&!r.dissolved){
-        for(const m of r.members)seaEmitTo(m,'sea:team',{op:'left',uid:identUid,leader:r.leader,members:r.members});
+      if(r.ok)for(const m of r.members||[])seaEmitTo(m,'sea:team',{op:'left',uid:identUid,leader:r.leader,members:r.members,name:slot.name});
+      return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
+    }
+    if(d.op==='kick'){
+      const r=Sea.teamKick(identUid,String(d.uid||''));
+      if(r.ok){
+        seaEmitTo(r.kicked,'sea:team',{op:'kicked',by:slot.name});
+        for(const m of r.members||[])seaEmitTo(m,'sea:team',{op:'left',uid:r.kicked,leader:r.leader,members:r.members});
       }
       return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
     }
     if(d.op==='decline'){
-      const r=Sea.teamDecline(identUid,d.teamId);
+      const r=Sea.teamDecline(identUid);
       return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
     }
     reply({ok:false,err:'bad_op'})});
@@ -377,7 +381,7 @@ io.on('connection',s=>{
     if(!r.ok)return reply(r);
     let saved=null;try{saved=await island.saveSea(identUid,r.discoveries)}catch(e){}
     const t=Date.now();
-    reply({ok:true,docked:!leave,dropped:r.dropped||null,nearHome:!!r.nearHome,island:saved&&saved.ok?saved.island:undefined,sea:r.discoveries,cooldownMs:seaCooldownLeft(identUid,t),vitals:seaVitalsPack(identUid,t)})});
+    reply({ok:true,docked:!leave,dropped:r.dropped||null,held:r.held|0,nearHome:!!r.nearHome,island:saved&&saved.ok?saved.island:undefined,sea:r.discoveries,cooldownMs:seaCooldownLeft(identUid,t),vitals:seaVitalsPack(identUid,t)})});
 
   s.on('lb',(d,cb)=>{if(typeof cb!=='function')return; // always answers, so the client never hangs on "Loading"
     if(!lim('lb',6,1))return cb({rows:[],me:null,busy:1});
