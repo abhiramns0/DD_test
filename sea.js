@@ -14,7 +14,18 @@ const CFG = {
   npcSpeed: 70,
   wildSpeed: 55,
   tickHz: 15,
-  npcBoats: 5,
+  npcBoats: 14,            // density of NPC boats (was 5)
+  npcAggroShare: 0.75,     // 75% of NPC boats are hostile; the rest only wander and run away when attacked
+  mineMax: 3,
+  mineDamage: 85,          // a player boat has 100 hp: a mine almost destroys it
+  mineTtlMs: 30000,
+  mineArmMs: 900,
+  mineTriggerR: 42,
+  mineDropBack: 72,        // dropped this far behind the boat
+  mineDropCdMs: 1200,
+  minePacks: 7,            // mine pick-ups floating in the open sea
+  minePackRespawnMs: 25000,
+  cannonCooldownMs: 800,
   wildlife: 8,
   islets: 7,
   treasures: 10,
@@ -187,10 +198,20 @@ function spawnNpcs(seed, count) {
       maxHp: CFG.npcBoatHp,
       alive: true,
       loot: rnd() < 0.5 ? 1 : 0,
-      aggro: true,             // every NPC boat is hostile: it chases, rams and shoots
+      aggro: rnd() < CFG.npcAggroShare, // hostile boats chase, ram and shoot; the others wander and flee when attacked
+      fleeUntil: 0, fleeX: 0, fleeY: 0,
       shotAt: 0,
       contactAt: 0
     });
+  }
+  return out;
+}
+
+function spawnMinePacks(seed) {
+  const rnd = rng(seed + ':mines'), out = [];
+  for (let i = 0; i < CFG.minePacks; i++) {
+    const a = rnd() * Math.PI * 2, d = CFG.homeR + 200 + rnd() * (CFG.worldR - CFG.homeR - 260);
+    out.push({ id: 'mp_' + i, x: Math.cos(a) * d, y: Math.sin(a) * d, taken: false, takenAt: 0 });
   }
   return out;
 }
@@ -272,6 +293,9 @@ function ensureShared() {
     playerWrecks: [],
     shots: [],
     fx: [],
+    mines: [],
+    minePacks: spawnMinePacks(sharedSeed),
+    lastMinePack: Date.now(),
     races: spawnRaces(sharedSeed),
     teams: new Map(), // teamId -> { id, leader, members:Set, names:Map }
     teamInvites: new Map() // toUid -> { from, name, teamId|null, at }  (a team only exists once an invite was ACCEPTED)
@@ -325,6 +349,7 @@ function createSession(uid, voyage, savedDiscoveries, opts) {
     discoveries: disc,
     level: Math.max(1, (opts && opts.level) | 0 || 1),
     inv: { gems: 0, gold: 0 },
+    mines: 0,
     fullAt: { gems: 0, gold: 0 },
     status: 'sailing'
   };
@@ -450,10 +475,21 @@ function resolveBoatBoat(a, b, r) {
 }
 
 let shotSeq = 0;
+function scare(e, fx, fy, now) { // an attacked peaceful boat flees from the attacker for a while
+  if (e && e.kind === 'boat' && !e.aggro) { e.fleeUntil = now + 9000; e.fleeX = fx; e.fleeY = fy; }
+}
 function tickShared(dt, now, playerPositions) {
   ensureShared();
   const W = SHARED;
   cleanWrecks(now);
+  if (now - (W.lastMinePack || 0) > CFG.minePackRespawnMs) { // mine pick-ups come back after a while
+    W.lastMinePack = now;
+    const t = W.minePacks.find((m) => m.taken && now - m.takenAt > CFG.minePackRespawnMs);
+    if (t) {
+      const a = Math.random() * Math.PI * 2, d = CFG.homeR + 200 + Math.random() * (CFG.worldR - CFG.homeR - 260);
+      t.x = Math.cos(a) * d; t.y = Math.sin(a) * d; t.taken = false;
+    }
+  }
   for (const n of W.npcs) {
     if (!n.alive) continue;
     let target = null;
@@ -467,7 +503,9 @@ function tickShared(dt, now, playerPositions) {
         }
       }
     }
-    if (target) {
+    if (!n.aggro && now < (n.fleeUntil || 0)) { // peaceful boats run from whoever attacked them
+      steerNpc(n, n.x + (n.x - n.fleeX) * 3, n.y + (n.y - n.fleeY) * 3, CFG.npcSpeed * 1.05, dt);
+    } else if (target) {
       steerNpc(n, target.x, target.y, CFG.npcSpeed * 0.85, dt);
       if (best < CFG.npcShootRange && now - (n.shotAt || 0) > CFG.npcShotCdMs) { // pirates fire their cannon at sailors in range
         n.shotAt = now + Math.random() * 500;
@@ -658,6 +696,7 @@ function deposit(session) {
 }
 
 function autoCollect(session, now) {
+  collectMinePack(session, now);
   for (let i = 0; i < 6; i++) {
     const r = collectTreasure(session, now);
     if (!(r.ok || r.err === 'already')) break;
@@ -668,13 +707,84 @@ function autoCollect(session, now) {
   }
 }
 
+// ---- mines: a limited stock carried by each boat, picked up from the open sea, dropped behind the boat, gone after 30 s
+function dropMine(session, uid, name, now) {
+  if (!session || session.status !== 'sailing') return { ok: false, err: 'not_sailing' };
+  const p = session.player;
+  if (!p.alive) return { ok: false, err: 'dead' };
+  if ((session.mines | 0) <= 0) return { ok: false, err: 'no_mines' };
+  if (now < (p.mineAt || 0)) return { ok: false, err: 'cooldown' };
+  p.mineAt = now + CFG.mineDropCdMs;
+  ensureShared();
+  const f = p.facing || 0;
+  SHARED.mines.push({
+    id: 'm' + (++shotSeq), owner: uid, ownerName: String(name || 'Sailor').slice(0, 14), at: now,
+    x: p.x - Math.cos(f) * CFG.mineDropBack, y: p.y - Math.sin(f) * CFG.mineDropBack
+  });
+  if (SHARED.mines.length > 60) SHARED.mines.shift();
+  session.mines -= 1;
+  session.events.push({ t: 'mine_drop', at: now });
+  return { ok: true, mines: session.mines };
+}
+
+function collectMinePack(session, now) {
+  const p = session.player;
+  ensureShared();
+  for (const m of SHARED.minePacks) {
+    if (m.taken || Math.hypot(m.x - p.x, m.y - p.y) > CFG.collectRange) continue;
+    if ((session.mines | 0) >= CFG.mineMax) { noteFull(session, 'mines', now); return; }
+    m.taken = true; m.takenAt = now;
+    session.mines = (session.mines | 0) + 1;
+    session.events.push({ t: 'mine_pick', at: now });
+    return;
+  }
+}
+
+function tickMines(now, sess) {
+  const W = SHARED;
+  W.mines = W.mines.filter((m) => now - m.at < CFG.mineTtlMs);
+  const keep = [];
+  for (const m of W.mines) {
+    let boom = false;
+    if (now - m.at >= CFG.mineArmMs) {
+      for (const [uid, slot] of sess) {
+        const ps = slot && slot.session;
+        if (!ps || ps.status !== 'sailing' || !ps.player.alive) continue;
+        const pl = ps.player;
+        if (Math.hypot(pl.x - m.x, pl.y - m.y) > CFG.boatRadius + 14) continue;
+        pl.hp -= CFG.mineDamage;
+        ps.events.push({ t: 'mine_hit', by: m.ownerName, hp: pl.hp, at: now });
+        if (pl.hp <= 0) { pl.hp = 0; pl.alive = false; pl.sunkBy = uid === m.owner ? null : m.ownerName; }
+        boom = true;
+        break;
+      }
+      if (!boom) {
+        for (const e of [...W.npcs, ...W.wildlife]) {
+          if (!e.alive || Math.hypot(e.x - m.x, e.y - m.y) > CFG.boatRadius + 14) continue;
+          e.hp -= CFG.mineDamage;
+          if (e.hp <= 0) {
+            e.alive = false; e.hp = 0; e.diedAt = now;
+            const o = sess.get(m.owner);
+            if (o && o.session) o.session.events.push({ t: 'kill', id: e.id, kind: e.kind, loot: e.loot | 0, at: now });
+          }
+          boom = true;
+          break;
+        }
+      }
+    }
+    if (boom) W.fx.push({ x: m.x, y: m.y, k: 'boom', at: now });
+    else keep.push(m);
+  }
+  W.mines = keep;
+}
+
 // ---- cannon: Attack fires a ball straight ahead of the bow. Balls are simulated here for everyone (players and NPC pirates).
 function fireCannon(session, uid, name, now) {
   if (!session || session.status !== 'sailing') return { ok: false, err: 'not_sailing' };
   const p = session.player;
   if (!p.alive) return { ok: false, err: 'dead' };
-  if (now < p.attackAt) return { ok: false, err: 'cooldown' };
-  p.attackAt = now + CFG.attackCooldownMs;
+  if (now < (p.cannonAt || 0)) return { ok: false, err: 'cooldown' };
+  p.cannonAt = now + CFG.cannonCooldownMs;
   ensureShared();
   const f = p.facing || 0, c = Math.cos(f), s = Math.sin(f);
   SHARED.shots.push({
@@ -707,11 +817,19 @@ function tickShots(dt, now, sess) {
     }
     const owner = !s.npc && sess.get(s.owner) ? sess.get(s.owner).session : null;
     let used = false;
+    const mi = W.mines.findIndex((m) => Math.hypot(m.x - s.x, m.y - s.y) < 28); // a ball that touches a mine detonates it
+    if (mi >= 0) {
+      const m = W.mines[mi];
+      W.mines.splice(mi, 1);
+      W.fx.push({ x: m.x, y: m.y, k: 'boom', at: now });
+      continue;
+    }
     if (!s.npc) {
       for (const e of [...W.npcs, ...W.wildlife]) {
         if (!e.alive || Math.hypot(e.x - s.x, e.y - s.y) > CFG.cannonHitR) continue;
         e.hp -= s.dmg;
         W.fx.push({ x: e.x, y: e.y, k: 'hit', at: now });
+        if (owner) scare(e, owner.player.x, owner.player.y, now); else scare(e, s.x - s.vx, s.y - s.vy, now);
         if (e.hp <= 0) {
           e.alive = false; e.hp = 0; e.diedAt = now;
           if (owner) owner.events.push({ t: 'kill', id: e.id, kind: e.kind, loot: e.loot | 0, at: now });
@@ -742,6 +860,7 @@ function tickShots(dt, now, sess) {
     if (!used) keep.push(s);
   }
   W.shots = keep;
+  tickMines(now, sess);
 }
 
 function attack(session, now) {
@@ -767,6 +886,7 @@ function attack(session, now) {
     return { ok: true, hit: false };
   }
   hit.hp -= CFG.attackDamage;
+  scare(hit, p.x, p.y, now);
   if (hit.hp <= 0) {
     hit.alive = false;
     hit.hp = 0;
@@ -1000,7 +1120,9 @@ function view(session, opts) {
       ),
     shots: SHARED.shots.filter((s) => near(s)).map((s) => ({ id: s.id, x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), npc: !!s.npc, mine: s.owner === session.uid })),
     fx: SHARED.fx.filter((f) => near(f)).map((f) => ({ x: r1(f.x), y: r1(f.y), k: f.k, age: Date.now() - f.at })),
-    inv: { gems: session.inv.gems | 0, gold: session.inv.gold | 0, cap: invCap(session.level), level: session.level },
+    mines: SHARED.mines.filter((m) => near(m)).map((m) => ({ id: m.id, x: r1(m.x), y: r1(m.y), mine: m.owner === session.uid, age: Date.now() - m.at })),
+    minePacks: SHARED.minePacks.filter((m) => !m.taken && near(m)).map((m) => ({ id: m.id, x: r1(m.x), y: r1(m.y) })),
+    inv: { mines: session.mines | 0, maxMines: CFG.mineMax, gems: session.inv.gems | 0, gold: session.inv.gold | 0, cap: invCap(session.level), level: session.level },
     chests: session.islets
       .filter((it) => Math.abs(it.x - p.x) <= R + it.r && Math.abs(it.y - p.y) <= R + it.r)
       .map((it) => ({
@@ -1389,6 +1511,8 @@ module.exports = {
   tickShared,
   attack,
   fireCannon,
+  dropMine,
+  tickMines,
   tickShots,
   loot,
   collectTreasure,
