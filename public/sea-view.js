@@ -25,6 +25,7 @@
   let raf=0,lastT=0,canvasRef=null,onFrame=null,lastStateAt=0;
   let _keys={};
   let selfEmo=null;                       // {id,at,ttl}: the emoji bubble on MY boat (set locally the moment it is sent)
+  let aiming=false;                       // attack button held: show the cannon guide line
   let fxPulse=0;                          // performance.now() of the last attack pulse
   let popups=[];                          // floating '+1 💎' texts: {x,y,txt,t0}
   let homeScr=null;
@@ -32,6 +33,10 @@
   const trails=new Map();                 // key -> [{x,y,t}] boat wake trails
   let qual=2,ftEma=16.7,qualGood=0,qualBad=0;   // adaptive quality 2=full 1=reduced resolution 0=lite: slow phones drop detail instead of stuttering
   let resync=false;                             // set after a long stall: snap everything to the newest snapshot instead of gliding across the screen
+  // Snapshot interpolation: other boats / NPCs are drawn slightly in the PAST, between two real snapshots, so uneven packet
+  // arrival (Wi-Fi bursts, jitter) never shows up as stutter. The delay adapts to how regular the packets are.
+  const hist=new Map();                   // key -> [{t,x,y,vx,vy,f}] newest last
+  let lastArr=0,ivlEma=70,jitEma=10,interpDelay=140;
   const TRAIL_MAX=48;
   const TRAIL_MS=2400;
 
@@ -76,12 +81,30 @@
     // slim pushes leave out the static world: keep the last copy
     if(target){if(!snap.islets&&target.islets)snap.islets=target.islets;if(!snap.cfg&&target.cfg)snap.cfg=target.cfg;if(!snap.mp&&target.mp)snap.mp=target.mp}
     target=snap;lastStateAt=performance.now();
+    {const now=lastStateAt;
+      if(lastArr){const iv=Math.min(600,now-lastArr);jitEma+=(Math.abs(iv-ivlEma)-jitEma)*0.1;ivlEma+=(iv-ivlEma)*0.1;
+        const want=Math.max(90,Math.min(330,ivlEma*1.6+jitEma*2.5));interpDelay+=(want-interpDelay)*0.08}
+      lastArr=now;
+      const seenK=new Set();
+      const add=(arr,kind,idf)=>{for(const it of(arr||[])){const k=kind+':'+idf(it);seenK.add(k);let a=hist.get(k);if(!a){a=[];hist.set(k,a)}
+        a.push({t:now,x:it.x,y:it.y,vx:it.vx||0,vy:it.vy||0,f:it.facing||0});if(a.length>8)a.shift()}};
+      add(snap.npcs,'npc',n=>n.id);add(snap.others,'other',o=>o.uid);add(snap.wildlife,'wild',w=>w.id);
+      for(const k of[...hist.keys()])if(!seenK.has(k))hist.delete(k)}
     if(snap.cfg&&typeof snap.cfg.speed==='number')localSpeed=snap.cfg.speed;
   }
-  function reset(){resync=false;target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;chestScr=null;trails.clear();localIntent={mx:0,my:0}}
+  function sampleAt(key,rt){
+    const a=hist.get(key);if(!a||!a.length)return null;
+    const last=a[a.length-1];
+    if(rt>=last.t){const ex=Math.min(0.2,(rt-last.t)/1000);return{x:last.x+last.vx*ex,y:last.y+last.vy*ex,f:last.f}}
+    if(rt<=a[0].t)return a[0];
+    for(let i=a.length-1;i>0;i--){const A=a[i-1],B=a[i];
+      if(A.t<=rt){const k=(rt-A.t)/((B.t-A.t)||1);return{x:A.x+(B.x-A.x)*k,y:A.y+(B.y-A.y)*k,f:A.f+angDiff(A.f,B.f)*k}}}
+    return last}
+  function reset(){aiming=false;hist.clear();lastArr=0;resync=false;target=null;disp={player:null,ents:new Map()};cam.init=false;lastStateAt=0;selfEmo=null;fxPulse=0;popups=[];homeScr=null;chestScr=null;trails.clear();localIntent={mx:0,my:0}}
   function showSelfEmoji(id,ttl){selfEmo={id,at:performance.now(),ttl:ttl||2500}}
   function clearSelfEmoji(){selfEmo=null}
   function pulse(){fxPulse=performance.now()}
+  function setAim(on){aiming=!!on}
   function popup(txt){const p=disp.player||(target&&target.player);if(!p)return;popups.push({x:p.x,y:p.y,txt,t0:performance.now()});if(popups.length>8)popups.shift()}
   function getHome(){return homeScr}
   function getChest(){return chestScr}
@@ -89,7 +112,7 @@
 
   function stepEntities(dt){
     const s=target;if(!s)return;
-    const kEnt=1-Math.exp(-dt*16); // others / NPCs
+    const kEnt=1-Math.exp(-dt*16),kEntSm=1-Math.exp(-dt*28); // others / NPCs (the interpolated path needs only a light touch of smoothing)
     const age=Math.max(0,(performance.now()-lastStateAt)/1000);
     const ex=Math.min(0.12,age);
 
@@ -137,7 +160,8 @@
       for(const it of(arr||[])){
         const key=kind+':'+idf(it);seen.add(key);
         let e=disp.ents.get(key);if(!e){e={};disp.ents.set(key,e)}
-        ease(e,it.x+(it.vx||0)*ex,it.y+(it.vy||0)*ex,it.facing||0,kEnt,400);
+        const smp=sampleAt(key,performance.now()-interpDelay);
+        if(smp)ease(e,smp.x,smp.y,smp.f,kEntSm,500);else ease(e,it.x+(it.vx||0)*ex,it.y+(it.vy||0)*ex,it.facing||0,kEnt,400);
         if(kind==='other'){const em=it.emoji&&it.emoji.id?it.emoji:null; // restart the pop-in when a new emoji appears
           if(em){if(e.emoId!==em.id||e.emoUntil!==em.until){e.emoId=em.id;e.emoUntil=em.until;e.emoAt=performance.now()}}else e.emoId=null}
         e.src=it;e.kind=kind;
@@ -213,15 +237,23 @@
     const f1=pt(0.02,0,L*0.62),f2=pt(-0.16,0,L*0.58),f3=pt(0.02,0,L*0.54);
     g.fillStyle=isPlayer?'#ff6b4a':'#4a8cff';g.beginPath();g.moveTo(f1[0],f1[1]);g.lineTo(f2[0],f2[1]);g.lineTo(f3[0],f3[1]);g.closePath();g.fill();
     // bow cannon: carriage + dark barrel pointing straight ahead (+x in boat space), with a bright muzzle ring
-    const cb0=pt(0.34,0,L*0.05),cb1=pt(0.74,0,L*0.085),cw=pt(0.34,0.0,L*0.02);
-    g.fillStyle='#6b4a28';g.beginPath();g.ellipse(cw[0],cw[1],L*m.c*0.07,L*m.c*0.045,0,0,6.283);g.fill();
-    g.strokeStyle='#23272e';g.lineWidth=Math.max(3,L*m.c*0.075);g.lineCap='round';g.beginPath();g.moveTo(cb0[0],cb0[1]);g.lineTo(cb1[0],cb1[1]);g.stroke();
-    g.strokeStyle='#4a515c';g.lineWidth=Math.max(1.2,L*m.c*0.028);g.beginPath();g.moveTo(cb0[0],cb0[1]-L*m.c*0.02);g.lineTo(cb1[0],cb1[1]-L*m.c*0.02);g.stroke();
-    g.fillStyle='#8c95a1';g.beginPath();g.arc(cb1[0],cb1[1],Math.max(1.6,L*m.c*0.032),0,6.283);g.fill();
+    const cb0=pt(0.2,0,L*0.05),cb1=pt(0.38,0,L*0.07),cw=pt(0.2,0.0,L*0.02);
+    g.fillStyle='#6b4a28';g.beginPath();g.ellipse(cw[0],cw[1],L*m.c*0.055,L*m.c*0.036,0,0,6.283);g.fill();
+    g.strokeStyle='#23272e';g.lineWidth=Math.max(2.4,L*m.c*0.06);g.lineCap='round';g.beginPath();g.moveTo(cb0[0],cb0[1]);g.lineTo(cb1[0],cb1[1]);g.stroke();
+    g.strokeStyle='#4a515c';g.lineWidth=Math.max(1,L*m.c*0.022);g.beginPath();g.moveTo(cb0[0],cb0[1]-L*m.c*0.016);g.lineTo(cb1[0],cb1[1]-L*m.c*0.016);g.stroke();
+    g.fillStyle='#8c95a1';g.beginPath();g.arc(cb1[0],cb1[1],Math.max(1.3,L*m.c*0.026),0,6.283);g.fill();
     g.lineCap='butt';
     return{x:c0[0],y:c0[1],top:mt[1],muzzle:cb1};
   }
 
+  function mineShape(g,x,y,k,alpha,bright){ // spiky sea mine
+    g.save();g.globalAlpha=alpha;
+    const body=bright?'#2b3038':'#2f86ab',spike=bright?'#555e69':'#3b97bd',light=bright?'#ff5a3c':'#5bb5d6';
+    g.strokeStyle=spike;g.lineWidth=2*k;g.lineCap='round';
+    for(let i=0;i<8;i++){const a=i*Math.PI/4;g.beginPath();g.moveTo(x+Math.cos(a)*7*k,y+Math.sin(a)*4.2*k);g.lineTo(x+Math.cos(a)*11.5*k,y+Math.sin(a)*7*k);g.stroke()}
+    g.fillStyle=body;g.beginPath();g.ellipse(x,y,8*k,5.4*k,0,0,6.283);g.fill();
+    g.fillStyle=light;g.beginPath();g.arc(x,y-1*k,1.8*k,0,6.283);g.fill();
+    g.restore()}
   function hpBar(g,x,y,hp,max,col){
     if(hp==null)return;const pct=Math.max(0,Math.min(1,hp/Math.max(1,max||100)));
     g.fillStyle='rgba(0,0,0,.5)';g.fillRect(x-20,y,40,5);g.fillStyle=pct>0.4?(col==='#e5484d'?'#e5a23a':col):'#e5484d';g.fillRect(x-20,y,40*pct,5);
@@ -399,6 +431,10 @@
           if(e.emoId)bubbles.push({x:r.x,y:r.top-24,id:e.emoId,age:nowMs-(e.emoAt||nowMs),ttl:2500})}});
       }
       if(disp.player&&snap.player)list.push({d:disp.player.x+disp.player.y+0.01,f:()=>{
+        if(aiming){ // cannon guide: faint white line straight ahead of the bow, same thickness as the cannon, shorter than the range
+          const f=disp.player.f||0,cf=Math.cos(f),sf=Math.sin(f),R0=BOAT_LEN*0.38,R1=Math.min(340,((snap.cfg&&snap.cfg.cannonRange)||430)*0.78);
+          const a=P(disp.player.x+cf*R0,disp.player.y+sf*R0,m),b=P(disp.player.x+cf*R1,disp.player.y+sf*R1,m);
+          g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=Math.max(2.4,BOAT_LEN*m.c*0.06);g.lineCap='round';g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();g.lineCap='butt'}
         const r=drawBoat(g,m,disp.player,true);
         label(g,'YOU',r.x,r.top-14,fs,'#ffe9a0');
         if(fxPulse&&r.muzzle){const pa=(nowMs-fxPulse)/260;if(pa<1){ // muzzle flash + smoke puff at the cannon
@@ -409,6 +445,15 @@
         const pct=Math.max(0,Math.min(1,(snap.player.hp||100)/Math.max(1,snap.player.maxHp||100)));
         g.fillStyle='rgba(0,0,0,.45)';g.fillRect(r.x-22,r.top-10,44,5);
         g.fillStyle=pct>0.4?'#5fcf70':'#e5484d';g.fillRect(r.x-22,r.top-10,44*pct,5)}});
+      for(const mp of(snap.minePacks||[]))list.push({d:mp.x+mp.y,f:()=>{ // mine pick-ups: a floating mine with a glowing ring
+        const p=P(mp.x,mp.y,m),k=m.c,bob=Math.sin(t*2.2+mp.x)*2*k;
+        g.globalAlpha=0.35+0.2*Math.sin(t*3+mp.y);g.strokeStyle='#ffd34d';g.lineWidth=2*k;const[rx,ry]=ER(22,m);g.beginPath();g.ellipse(p[0],p[1],rx,ry,0,0,6.283);g.stroke();g.globalAlpha=1;
+        mineShape(g,p[0],p[1]-6*k+bob,k,1,true)}});
+      for(const mn of(snap.mines||[]))list.push({d:mn.x+mn.y,f:()=>{ // dropped mines are sea-coloured: easy to miss, which is the point
+        const p=P(mn.x,mn.y,m),k=m.c,age=mn.age+(nowMs-lastStateAt),fresh=Math.max(0,1-age/1400);
+        const left=30000-age;if(left<=0)return;
+        const blink=left<4000?(Math.sin(age/90)>0?0.2:0):0;
+        mineShape(g,p[0],p[1]+Math.sin(t*1.6+mn.x)*1.2*k,k,Math.min(1,(mn.mine?0.5:0.34)+fresh*0.6+blink),false)}});
       const age0=(nowMs-lastStateAt)/1000;
       for(const sh of(snap.shots||[]))list.push({d:sh.x+sh.y+(sh.vx+sh.vy)*age0+0.5,f:()=>{ // cannonballs fly in a straight line: extrapolate between snapshots
         const x=sh.x+sh.vx*age0,y=sh.y+sh.vy*age0,p=P(x,y,m),k=m.c,lift=14*k;
@@ -418,7 +463,8 @@
         g.fillStyle='rgba(255,255,255,.55)';g.beginPath();g.arc(p[0]-1.4*k,p[1]-lift-1.6*k,1.5*k,0,6.283);g.fill()}});
       for(const f of(snap.fx||[])){const a=(f.age+(nowMs-lastStateAt))/900;if(a>=1)continue;list.push({d:f.x+f.y+2,f:()=>{
         const p=P(f.x,f.y,m),k=m.c;g.globalAlpha=1-a;
-        if(f.k==='hit'){g.fillStyle='#ffb02e';g.beginPath();g.arc(p[0],p[1]-12*k,(8+26*a)*k,0,6.283);g.fill();g.fillStyle='#fff3b0';g.beginPath();g.arc(p[0],p[1]-12*k,(4+12*a)*k,0,6.283);g.fill();
+        if(f.k==='boom'){const r0=(14+70*a)*k;g.fillStyle='#ff8a1f';g.beginPath();g.ellipse(p[0],p[1]-10*k,r0,r0*0.7,0,0,6.283);g.fill();g.fillStyle='#fff1b0';g.beginPath();g.ellipse(p[0],p[1]-10*k,r0*0.55,r0*0.38,0,0,6.283);g.fill();g.strokeStyle='rgba(255,255,255,.8)';g.lineWidth=3*k*(1-a);const[bx,by]=ER(20+90*a,m);g.beginPath();g.ellipse(p[0],p[1],bx,by,0,0,6.283);g.stroke()}
+        else if(f.k==='hit'){g.fillStyle='#ffb02e';g.beginPath();g.arc(p[0],p[1]-12*k,(8+26*a)*k,0,6.283);g.fill();g.fillStyle='#fff3b0';g.beginPath();g.arc(p[0],p[1]-12*k,(4+12*a)*k,0,6.283);g.fill();
           g.strokeStyle='#6b4a28';g.lineWidth=2*k;for(let i=0;i<6;i++){const an=i*1.05+0.4,r0=(10+30*a)*k;g.beginPath();g.moveTo(p[0]+Math.cos(an)*r0*0.6,p[1]-12*k+Math.sin(an)*r0*0.4);g.lineTo(p[0]+Math.cos(an)*r0,p[1]-12*k+Math.sin(an)*r0*0.6);g.stroke()}} // flying splinters
         else{g.strokeStyle='#ffffff';g.lineWidth=2.4*k*(1-a);const[rx,ry]=ER(12+40*a,m);g.beginPath();g.ellipse(p[0],p[1],rx,ry,0,0,6.283);g.stroke()}
         g.globalAlpha=1}})}
@@ -521,5 +567,5 @@
     window.addEventListener('blur',()=>{_keys={};fire()});
   }
 
-  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome,getChest,setLocalIntent,setLocalSpeed};
+  window.SeaView={draw,start,stop,setState,reset,stateAge,bindKeys,metrics,dirToWorld,showSelfEmoji,clearSelfEmoji,pulse,popup,getHome,getChest,setAim,setLocalIntent,setLocalSpeed};
 })();
