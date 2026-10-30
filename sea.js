@@ -23,7 +23,15 @@ const CFG = {
   wildHp: 20,
   attackRange: 85,
   attackDamage: 28,
-  attackCooldownMs: 700,
+  attackCooldownMs: 800,
+  cannonSpeed: 560,        // cannonball speed (world units / s)
+  cannonRange: 430,        // how far a ball flies before it splashes down
+  cannonHitR: 34,          // a ball hits any boat / animal this close to its path
+  cannonDamage: 20,        // vs NPC boats and wildlife (NPC boat hp is 40)
+  cannonPlayerDamage: 14,  // vs other sailors
+  npcShotDamage: 8,
+  npcShotCdMs: 2300,
+  npcShootRange: 340,
   lootRange: 62,
   collectRange: 62,
   aoiR: 1000,
@@ -44,7 +52,7 @@ const CFG = {
   crocDamageRange: 48,
   crocDamageCdMs: 900,
   npcContactDamage: 10,
-  npcContactRange: 55,
+  npcContactRange: 74,     // must be larger than 2 x boatRadius (56): boats push each other apart at that distance, so the old 55 never triggered
   npcContactCdMs: 1100,
   boatRadius: 28,
   treasureRespawnMs: 45000,
@@ -179,7 +187,8 @@ function spawnNpcs(seed, count) {
       maxHp: CFG.npcBoatHp,
       alive: true,
       loot: rnd() < 0.5 ? 1 : 0,
-      aggro: rnd() < 0.35,
+      aggro: true,             // every NPC boat is hostile: it chases, rams and shoots
+      shotAt: 0,
       contactAt: 0
     });
   }
@@ -261,6 +270,8 @@ function ensureShared() {
     wildlife: spawnWildlife(sharedSeed, CFG.wildlife),
     lastTreasureSpawn: Date.now(),
     playerWrecks: [],
+    shots: [],
+    fx: [],
     races: spawnRaces(sharedSeed),
     teams: new Map(), // teamId -> { id, leader, members:Set, names:Map }
     teamInvites: new Map() // toUid -> { from, name, teamId|null, at }  (a team only exists once an invite was ACCEPTED)
@@ -438,6 +449,7 @@ function resolveBoatBoat(a, b, r) {
   }
 }
 
+let shotSeq = 0;
 function tickShared(dt, now, playerPositions) {
   ensureShared();
   const W = SHARED;
@@ -455,8 +467,20 @@ function tickShared(dt, now, playerPositions) {
         }
       }
     }
-    if (target) steerNpc(n, target.x, target.y, CFG.npcSpeed * 0.85, dt);
-    else tickNpc(n, dt);
+    if (target) {
+      steerNpc(n, target.x, target.y, CFG.npcSpeed * 0.85, dt);
+      if (best < CFG.npcShootRange && now - (n.shotAt || 0) > CFG.npcShotCdMs) { // pirates fire their cannon at sailors in range
+        n.shotAt = now + Math.random() * 500;
+        const lead = best / CFG.cannonSpeed;
+        const ang = Math.atan2(target.y + (target.vy || 0) * lead - n.y, target.x + (target.vx || 0) * lead - n.x) + (Math.random() - 0.5) * 0.14;
+        W.shots.push({
+          id: 'n' + (++shotSeq), x: n.x + Math.cos(ang) * (CFG.boatRadius + 10), y: n.y + Math.sin(ang) * (CFG.boatRadius + 10),
+          vx: Math.cos(ang) * CFG.cannonSpeed * 0.85, vy: Math.sin(ang) * CFG.cannonSpeed * 0.85,
+          left: CFG.npcShootRange + 60, owner: n.id, ownerName: 'a pirate', npc: true, dmg: CFG.npcShotDamage
+        });
+        if (W.shots.length > 80) W.shots.splice(0, W.shots.length - 80);
+      }
+    } else tickNpc(n, dt);
     for (const it of W.islets) resolveCircle(n, it.x, it.y, it.r + CFG.boatRadius * 0.7);
     resolveCircle(n, 0, 0, CFG.homeR + CFG.boatRadius * 0.5);
   }
@@ -642,6 +666,82 @@ function autoCollect(session, now) {
     const r = loot(session, now);
     if (!r.ok) break;
   }
+}
+
+// ---- cannon: Attack fires a ball straight ahead of the bow. Balls are simulated here for everyone (players and NPC pirates).
+function fireCannon(session, uid, name, now) {
+  if (!session || session.status !== 'sailing') return { ok: false, err: 'not_sailing' };
+  const p = session.player;
+  if (!p.alive) return { ok: false, err: 'dead' };
+  if (now < p.attackAt) return { ok: false, err: 'cooldown' };
+  p.attackAt = now + CFG.attackCooldownMs;
+  ensureShared();
+  const f = p.facing || 0, c = Math.cos(f), s = Math.sin(f);
+  SHARED.shots.push({
+    id: 'c' + (++shotSeq), x: p.x + c * (CFG.boatRadius + 10), y: p.y + s * (CFG.boatRadius + 10),
+    vx: c * CFG.cannonSpeed, vy: s * CFG.cannonSpeed, left: CFG.cannonRange,
+    owner: uid, ownerName: String(name || 'Sailor').slice(0, 14), npc: false, dmg: CFG.cannonDamage
+  });
+  if (SHARED.shots.length > 80) SHARED.shots.splice(0, SHARED.shots.length - 80);
+  session.events.push({ t: 'fire', at: now });
+  return { ok: true, fired: true };
+}
+
+// sess: Map uid -> { session }. Returns nothing: sunk players get player.alive=false + player.sunkBy and the server ends their voyage.
+function tickShots(dt, now, sess) {
+  ensureShared();
+  const W = SHARED;
+  W.fx = W.fx.filter((f) => now - f.at < 900);
+  const keep = [];
+  for (const s of W.shots) {
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.left -= Math.hypot(s.vx, s.vy) * dt;
+    if (s.left <= 0) {
+      W.fx.push({ x: s.x, y: s.y, k: 'splash', at: now });
+      continue;
+    }
+    if (Math.hypot(s.x, s.y) < CFG.homeR * 0.85 || W.islets.some((it) => Math.hypot(s.x - it.x, s.y - it.y) < it.r * 0.85)) {
+      W.fx.push({ x: s.x, y: s.y, k: 'splash', at: now });
+      continue;
+    }
+    const owner = !s.npc && sess.get(s.owner) ? sess.get(s.owner).session : null;
+    let used = false;
+    if (!s.npc) {
+      for (const e of [...W.npcs, ...W.wildlife]) {
+        if (!e.alive || Math.hypot(e.x - s.x, e.y - s.y) > CFG.cannonHitR) continue;
+        e.hp -= s.dmg;
+        W.fx.push({ x: e.x, y: e.y, k: 'hit', at: now });
+        if (e.hp <= 0) {
+          e.alive = false; e.hp = 0; e.diedAt = now;
+          if (owner) owner.events.push({ t: 'kill', id: e.id, kind: e.kind, loot: e.loot | 0, at: now });
+        } else if (owner) owner.events.push({ t: 'hit', id: e.id, hp: e.hp, at: now });
+        used = true;
+        break;
+      }
+    }
+    if (!used) {
+      for (const [uid, slot] of sess) {
+        const ps = slot && slot.session;
+        if (!ps || ps.status !== 'sailing' || !ps.player.alive || uid === s.owner) continue;
+        if (!s.npc && sameTeam(s.owner, uid)) continue;
+        const pl = ps.player;
+        if (Math.hypot(pl.x - s.x, pl.y - s.y) > CFG.boatRadius + 12) continue;
+        const dmg = s.npc ? s.dmg : CFG.cannonPlayerDamage;
+        pl.hp -= dmg;
+        W.fx.push({ x: pl.x, y: pl.y, k: 'hit', at: now });
+        ps.events.push({ t: s.npc ? 'npc_hit' : 'cannon_hurt', by: s.ownerName, hp: pl.hp, at: now });
+        if (pl.hp <= 0) {
+          pl.hp = 0; pl.alive = false; pl.sunkBy = s.npc ? null : s.ownerName;
+          if (owner) owner.events.push({ t: 'pvp_sink', at: now });
+        } else if (owner) owner.events.push({ t: 'pvp_hit', hp: pl.hp, at: now });
+        used = true;
+        break;
+      }
+    }
+    if (!used) keep.push(s);
+  }
+  W.shots = keep;
 }
 
 function attack(session, now) {
@@ -898,6 +998,8 @@ function view(session, opts) {
             left: Math.max(0, (w.ttl || CFG.wreckTtlMs) - (Date.now() - (w.at || 0)))
           }))
       ),
+    shots: SHARED.shots.filter((s) => near(s)).map((s) => ({ id: s.id, x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), npc: !!s.npc, mine: s.owner === session.uid })),
+    fx: SHARED.fx.filter((f) => near(f)).map((f) => ({ x: r1(f.x), y: r1(f.y), k: f.k, age: Date.now() - f.at })),
     inv: { gems: session.inv.gems | 0, gold: session.inv.gold | 0, cap: invCap(session.level), level: session.level },
     chests: session.islets
       .filter((it) => Math.abs(it.x - p.x) <= R + it.r && Math.abs(it.y - p.y) <= R + it.r)
@@ -1286,6 +1388,8 @@ module.exports = {
   tick,
   tickShared,
   attack,
+  fireCannon,
+  tickShots,
   loot,
   collectTreasure,
   openChest,
