@@ -294,7 +294,7 @@ io.on('connection',s=>{
           if(r.ok&&r.sunk){sunkSlot=tSlot;sunkUid=d.targetUid}
           else if(r.ok&&r.hit)seaEmitTo(d.targetUid,'sea:event',{t:'pvp_hit',by:slot.name,hp:tSlot.session.player.hp,sea:seaPackFor(d.targetUid,tSlot,now)});
         }
-      }else r=Sea.attack(slot.session,now);
+      }else r=Sea.fireCannon(slot.session,identUid,slot.name,now); // Attack = fire the bow cannon
     }
     else if(d.op==='loot')r=Sea.loot(slot.session,now);
     else if(d.op==='collect')r=Sea.collectTreasure(slot.session,now);
@@ -369,6 +369,10 @@ io.on('connection',s=>{
       const r=Sea.raceJoin(identUid,slot.name,slot.session.player,d.raceId);
       return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}));
     }
+    if(d.op==='abort'){
+      try{Sea.raceAbandon(identUid)}catch(e){}
+      return reply({ok:true,sea:seaPackFor(identUid,slot,now)});
+    }
     reply({ok:false,err:'bad_op'})});
   // {leave:true} = 'Leave Sea' (works anywhere, starts the 30 s cooldown). Without it = DOCK: only accepted next to the home island, no cooldown.
   s.on('sea:return',async(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
@@ -419,8 +423,8 @@ setInterval(()=>{
   const voy=seaVoyagerList();
   // shared world (NPCs, wildlife, collectables) ticks once; players chase nearest sailor
   const playerPositions=[];
-  for(const v of voy)if(v&&v.player&&v.player.alive)playerPositions.push({x:v.player.x,y:v.player.y});
-  try{Sea.tickShared(dt,now,playerPositions)}catch(e){console.error('[sea] shared',e.message)}
+  for(const v of voy)if(v&&v.player&&v.player.alive)playerPositions.push({x:v.player.x,y:v.player.y,vx:v.player.vx||0,vy:v.player.vy||0});
+  try{Sea.tickShared(dt,now,playerPositions);Sea.tickShots(dt,now,seaSessions)}catch(e){console.error('[sea] shared',e.message)}
   // soft boat-vs-boat collisions between living sailors
   {const live=[];
     for(const [uid,slot] of seaSessions){
@@ -441,7 +445,7 @@ setInterval(()=>{
       Sea.tick(slot.session,dt,now);
       // if the player was sunk by crocodile / NPC contact this frame, end the voyage
       if(slot.session.player&&!slot.session.player.alive){
-        seaSink(uid,slot,null,now).catch(e=>console.error('[sea] contact sink',e.message));
+        seaSink(uid,slot,slot.session.player.sunkBy||null,now).catch(e=>console.error('[sea] contact sink',e.message));
         continue}
       if(slot.session.dirty){slot.session.dirty=false;seaQueueSave(uid,slot)}
       if(slot.sockId){
