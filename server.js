@@ -128,7 +128,7 @@ const srv=http.createServer((q,s)=>{
   if(hit)send(hit,rel);else if(!path.extname(rel))send(path.join(PUB,'index.html'),'/index.html');else{s.statusCode=404;s.end('not found')}
 });
 // pingInterval/pingTimeout: a dead phone connection is noticed in ~20 s instead of ~45 s, and the idle keep-alive stops proxies dropping it.
-const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'},pingInterval:10000,pingTimeout:10000});
+const io=new Server(srv,{cors:{origin:process.env.CLIENT_ORIGIN||'*'},pingInterval:10000,pingTimeout:10000,perMessageDeflate:false,httpCompression:true});
 
 // ---------- leaderboard: PostgreSQL (Supabase) via leaderboard.js. Credentials: DATABASE_URL (server environment only) ----------
 const board=require('./leaderboard').create(console);
@@ -275,6 +275,7 @@ io.on('connection',s=>{
     const mx=d&&typeof d.mx==='number'&&isFinite(d.mx)?Math.max(-1,Math.min(1,d.mx)):0;
     const my=d&&typeof d.my==='number'&&isFinite(d.my)?Math.max(-1,Math.min(1,d.my)):0;
     Sea.setIntent(slot.session,mx,my,Date.now())});
+  s.on('sea:net',d=>{s.seaPoll=!!(d&&d.poll)}); // client on a long-polling connection (some Wi-Fi blocks WebSockets): it gets fewer, steadier pushes
   s.on('sea:tick',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
@@ -294,8 +295,10 @@ io.on('connection',s=>{
           if(r.ok&&r.sunk){sunkSlot=tSlot;sunkUid=d.targetUid}
           else if(r.ok&&r.hit)seaEmitTo(d.targetUid,'sea:event',{t:'pvp_hit',by:slot.name,hp:tSlot.session.player.hp,sea:seaPackFor(d.targetUid,tSlot,now)});
         }
-      }else r=Sea.fireCannon(slot.session,identUid,slot.name,now); // Attack = fire the bow cannon
+      }else r=Sea.attack(slot.session,now); // press = proximity attack (rams / pokes anything close)
     }
+    else if(d.op==='cannon')r=Sea.fireCannon(slot.session,identUid,slot.name,now); // release = cannon ball straight ahead
+    else if(d.op==='mine')r=Sea.dropMine(slot.session,identUid,slot.name,now);
     else if(d.op==='loot')r=Sea.loot(slot.session,now);
     else if(d.op==='collect')r=Sea.collectTreasure(slot.session,now);
     else if(d.op==='chest')r=Sea.openChest(slot.session,String(d.id||''),now);
@@ -450,6 +453,7 @@ setInterval(()=>{
       if(slot.session.dirty){slot.session.dirty=false;seaQueueSave(uid,slot)}
       if(slot.sockId){
         const sock=io.sockets.sockets.get(slot.sockId);
+        if(sock&&sock.seaPoll&&((slot.pt=(slot.pt|0)+1)%2))continue; // polling transport: every 2nd tick (events stay queued in the session)
         if(sock){const pack=seaPackFor(uid,slot,now,voy,false);(pack.events&&pack.events.length?sock:sock.volatile).emit('sea:state',pack)}}
     }catch(e){console.error('[sea] loop',e.message)}
   }
