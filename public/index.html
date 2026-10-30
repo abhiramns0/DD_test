@@ -87,6 +87,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaConfirm p{margin:0 0 8px;font-size:13px;line-height:1.4}
 #seaConfirm .cbtns{display:flex;gap:10px;margin-top:12px}
 #seaConfirm .cbtns button{flex:1;margin:0;border:0;border-radius:999px;padding:11px 8px;font-weight:800;font-size:14px;color:#fff;cursor:pointer;touch-action:manipulation}
+#titleImg[hidden]{display:none!important}
 #seaMsg:empty{display:none}
 #seaMsg{margin:0;font-size:12px!important;font-weight:700;color:#e8f6fc;text-shadow:0 1px 2px rgba(0,0,0,.65);text-align:left;white-space:normal;line-height:1.25}
 /* anchor = Leave Sea */
@@ -106,6 +107,10 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #seaStick.on #seaKnob{transition:none}
 /* attack: tap to fire, the dark wedge is the reload */
 #sea button.sbtn#seaAttack{position:absolute;z-index:4;right:calc(env(safe-area-inset-right,0px) + 18px);bottom:calc(env(safe-area-inset-bottom,0px) + 36px);width:86px;height:86px;border-radius:50%;font-size:36px;color:#fff;overflow:hidden;background:radial-gradient(circle at 35% 28%,#ffa174,#ff5a3c 60%,#d63a24);box-shadow:0 5px 0 #8f2412,0 0 0 4px rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;line-height:1}
+#sea button.sbtn#seaMine{position:absolute;z-index:4;right:calc(env(safe-area-inset-right,0px) + 36px);bottom:calc(env(safe-area-inset-bottom,0px) + 136px);width:50px;height:50px;border-radius:50%;font-size:24px;line-height:1;color:#fff;background:radial-gradient(circle at 35% 28%,#6c8499,#34495e 65%,#26323f);box-shadow:0 4px 0 #17202a,0 0 0 3px rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center}
+#seaMine .mc{position:absolute;right:-6px;bottom:-4px;min-width:30px;padding:1px 5px;border-radius:999px;background:#fff;color:#26323f;font-size:11px;font-weight:800;line-height:15px;box-shadow:0 2px 0 rgba(0,0,0,.3)}
+#seaMine.empty{filter:grayscale(1) brightness(.75)}
+#sea button.sbtn#seaMine:active{transform:translateY(2px) scale(.95)}
 #seaAttack .cd{position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(10,30,45,.66) calc(var(--cd,0)*360deg),transparent 0);pointer-events:none;display:block;border:0;margin:0;padding:0;font-style:normal}
 #seaAttack .ic{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;line-height:1;filter:drop-shadow(0 2px 0 rgba(0,0,0,.3));pointer-events:none}
 #seaAttack.cool{filter:saturate(.5)}
@@ -302,8 +307,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 .ov a.dellink{margin-top:22px;padding:8px;font-size:12px;font-weight:700;color:var(--ink);opacity:.7;text-decoration:underline;cursor:pointer}
 </style>
 <script>window.SERVER_URL="";/* set to your Render URL if the client is hosted elsewhere (e.g. Vercel) */</script>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script>window.supabase||document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script><!-- sign-in (Google / Apple / email). If it cannot load the game still works as guest. -->
+<!-- socket.io + supabase are loaded by a small loader at the end of the page (with timeouts), so a stalled CDN can never freeze the whole game on 'Connecting…' --><!-- sign-in (Google / Apple / email). If it cannot load the game still works as guest. -->
 </head><body>
 <canvas id="c"></canvas>
 <div id="hud"><div id="top"><div id="lvl"></div><div id="inv"></div>
@@ -318,7 +322,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <button class="rb" id="music" aria-label="Mute music and ocean ambience" aria-pressed="false">🎵</button></div>
 <button id="push">PUSH</button>
 <div id="cd"></div><div id="banner"></div><div id="toast"></div><div id="net">● Connecting…</div>
-<div class="ov" id="menu"><h1 id="menuTitle"><img id="titleImg" alt="Drowning Dash" hidden><span id="titleTxt">DROWNING<br>DASH</span></h1><p>Build. Escape. Survive.</p>
+<div class="ov" id="menu"><h1 id="menuTitle"><img id="titleImg" alt="" hidden><span id="titleTxt">DROWNING<br>DASH</span></h1><p>Build. Escape. Survive.</p>
 <button class="acct" id="signInBtn">👤 GUEST · SIGN IN</button>
 <div class="mainbtns"><div class="pbg"><button id="solo">SOLO</button><p class="best" id="best"></p></div>
 <div class="pbg"><button id="multi">MULTIPLAYER</button><p class="best" id="bestmp"></p></div>
@@ -421,7 +425,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <!-- bottom: emoji (left) · joystick (middle) · attack (right) -->
   <button type="button" id="seaEmoBtn" class="sbtn" aria-label="Send an emoji">😊</button>
   <div id="seaStick" aria-label="Steering joystick"><div id="seaKnob"></div></div>
-  <button type="button" id="seaAttack" class="sbtn" aria-label="Attack"><span class="cd"></span><span class="ic">💣</span></button>
+  <button type="button" id="seaMine" class="sbtn" aria-label="Drop a mine">💣<span class="mc" id="seaMineTxt">0/3</span></button>
+  <button type="button" id="seaAttack" class="sbtn" aria-label="Attack"><span class="cd"></span><span class="ic">💥</span></button>
 
   <!-- emoji radial menu -->
   <div id="seaEmoRing"><div id="seaEmoShade"></div><div id="seaEmoItems"></div><div id="seaEmoHub">😊</div></div>
@@ -453,8 +458,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=13"></script>
-<script>
+ <script src="/sea-view.js?v=14"></script>
+<script type="text/plain" id="mainjs">
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
 const INTRO_ZOOM=2; // each round starts zoomed in at this factor and eases out to 1x during the countdown (set 1 to disable)
@@ -499,6 +504,8 @@ const SFX={
   l.frequency.value=31;lg.gain.value=.55;b.gain.value=.5;l.connect(lg);lg.connect(b.gain);o.connect(b);b.connect(e);e.connect(ac.destination);
   e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(.16,t+.02);e.gain.setValueAtTime(.16,t+.62);e.gain.exponentialRampToValueAtTime(.0001,t+.75);
   o.start(t);l.start(t);o.stop(t+.8);l.stop(t+.8);sN(.6,'highpass',3200,.6,.04)},
+ boom(){sT(90,.7,'sine',.4,0,.3);sN(.5,'lowpass',700,.7,.34);sN(.12,'highpass',2000,.7,.14);SFX.wood(.9)},
+ mineGet(){sT(330,.14,'square',.05);sT(494,.2,'square',.05,.1)},
  cp(){sT(880,.16,'sine',.09);sT(1319,.3,'sine',.08,.1)},
  finish(){[523,659,784,1047].forEach((f,i)=>sT(f,.3,'triangle',.09,i*.11))}
 };
@@ -791,7 +798,7 @@ const SKINS={default:{n:'Explorer'},
  royal:{n:'Royal',tun:['#6a2fb0','#9a62e0','#43197a'],hat:'crown',prem:1}};
 const skinDef=id=>SKINS[id]||SKINS.default,ownsSkin=id=>!!SKINS[id]&&(id==='default'||OWNED_SKINS.includes(id)||(UNLOCKS.skin[id]!==undefined&&getDone()>=UNLOCKS.skin[id]));
 const TITLE_IMG='/icons/title.png'; // home-screen title picture (PNG with transparent background); if the file is missing the text title stays
-{const im=new Image();im.onload=()=>{const t=$('titleImg');t.src=TITLE_IMG;t.hidden=false;$('titleTxt').style.display='none'};im.src=TITLE_IMG}
+{const im=new Image();im.onload=()=>{const t=$('titleImg');t.alt='Drowning Dash';t.src=TITLE_IMG;t.hidden=false;$('titleTxt').style.display='none'};im.src=TITLE_IMG}
 let MY_NAME='';try{MY_NAME=localStorage.getItem('si_name')||''}catch(e){}
 let MY_SKIN=(()=>{let s=QS.get('skin');if(!s){try{s=localStorage.getItem('si_skin')}catch(e){}}s=s||THEME_SETTINGS.skin;return ownsSkin(s)?s:'default'})();
 function equipSkin(id){if(!ownsSkin(id))return false;MY_SKIN=id;try{localStorage.setItem('si_skin',id)}catch(e){}try{socket.emit('skin',id)}catch(e){}return true} // call from your shop/menu UI later
@@ -1295,7 +1302,11 @@ let bt;function banner(h,ms=3200,bad=false,card=false){const b=$('banner');b.inn
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const netEl=$('net');
 // ---- sockets (optional simulated latency / loss for debugging)
-const socket=io(SERVER,{transports:['websocket','polling'],reconnectionDelay:300,reconnectionDelayMax:2500,timeout:10000});
+const socket=io(SERVER,{transports:['websocket','polling'],tryAllTransports:true,reconnectionDelay:300,reconnectionDelayMax:2500,timeout:8000}); // tryAllTransports: if a network blocks WebSockets, fall back to long-polling instead of sitting on 'Connecting…'
+setTimeout(function chk(){if(!socket.connected){try{socket.io.opts.transports=['polling','websocket'];socket.disconnect();socket.connect()}catch(e){}setTimeout(chk,8000)}},9000); // never sit on 'Connecting…': retry over plain HTTP long-polling
+const isPolling=()=>{try{return socket.io.engine.transport.name==='polling'}catch(e){return false}};
+const reportNet=()=>{try{socket.emit('sea:net',{poll:isPolling()})}catch(e){}};
+socket.on('connect',()=>{reportNet();try{socket.io.engine.once('upgrade',reportNet)}catch(e){}});
 // While leaving a room, game messages still in flight are ignored so they can't drag the player back into the game or lobby.
 let leaving=false;{const _on=socket.on.bind(socket),KEEP=['connect','disconnect','connect_error','reconnect'];socket.on=(ev,fn)=>_on(ev,(...a)=>{if(leaving&&!KEEP.includes(ev))return;return fn(...a)})}
 function leaveRoom(){leaving=true;clearSess();resetMenu();let done=false;const fin=()=>{if(!done){done=true;leaving=false}};try{socket.emit('leave',fin)}catch(e){}setTimeout(fin,2000)}
@@ -1956,6 +1967,7 @@ function seaUpdateHud(){
     if(fl)fl.style.width=Math.min(100,100*v/cap).toFixed(0)+'%';
     if(tt)tt.textContent=v+'/'+cap;
     if(row)row.classList.toggle('full',v>=cap)}
+  {const mb=$('seaMine'),mt=$('seaMineTxt'),mi=SEA.inv||{};if(mt)mt.textContent=(mi.mines|0)+'/'+(mi.maxMines||3);if(mb)mb.classList.toggle('empty',!(mi.mines>0))}
   seaSay(''); // no standing objectives: the line only shows short status notices (e.g. Reconnecting…)
 }
 function seaHandleEvents(evs){
@@ -1966,7 +1978,7 @@ function seaHandleEvents(evs){
     else if(e.t==='cannon_hurt'){toast('💥 Hit by '+(e.by||'a sailor'));sfx('wood')}
     else if(e.t==='pvp_hit'||e.t==='pvp_sink'){sfx('hit')}
     else if(e.t==='deposit'){if(e.gold)sfx('coin');if(e.gems)setTimeout(()=>sfx('gem'),e.gold?220:0);toast('🏠 Deposited'+(e.gold?' '+e.gold+' 🪙':'')+(e.gems?' '+e.gems+' 💎':''));}
-    else if(e.t==='full')toast(e.what==='treasury'?'🏦 Island treasury full — level up to store more gold':e.what==='gold'?'🪙 Gold bag full — deposit at home':'💎 Gem bag full — deposit at home');
+    else if(e.t==='full')toast(e.what==='mines'?'💣 You already carry 3 mines':e.what==='treasury'?'🏦 Island treasury full — level up to store more gold':e.what==='gold'?'🪙 Gold bag full — deposit at home':'💎 Gem bag full — deposit at home');
     else if(e.t==='explore')toast('🏝️ '+e.name);
     else if(e.t==='kill'){toast(e.loot?'⚔️ Sunk — loot it':'⚔️ Sunk');sfx('sink')}
     else if(e.t==='loot'){if(e.gems){svx('popup','+'+e.gems+' 💎');sfx('gem')}if(e.gold){svx('popup','+'+e.gold+' 🪙');sfx('coin')}if(!e.gems&&!e.gold)svx('popup','+'+(e.gained||1)+' 💎')}
@@ -1974,6 +1986,10 @@ function seaHandleEvents(evs){
     else if(e.t==='npc_hit'){toast(e.by?'💥 Shot by '+e.by:'⛵ Rammed!');sfx('wood')}
     else if(e.t==='croc_sink'||e.t==='npc_sink'){toast('💥 Boat destroyed!');sfx('sink')}
     else if(e.t==='hit'){svx('popup','💥');sfx('hit')}
+    else if(e.t==='miss')svx('popup','💨')
+    else if(e.t==='mine_pick'){toast('💣 Mine collected');sfx('mineGet')}
+    else if(e.t==='mine_drop'){sfx('splash')}
+    else if(e.t==='mine_hit'){toast('💥 Mine! '+(e.by?'(set by '+e.by+')':''));sfx('boom')}
     else if(e.t==='race_cp'){toast('🏁 Checkpoint '+e.cp);sfx('cp')}
     else if(e.t==='race_finish'){sfx('finish');toast('🏆 Finished #'+e.place+' — '+(e.ms/1000).toFixed(1)+'s');}
   });
@@ -2143,7 +2159,7 @@ function applySea(sea){
 async function seaWatchdog(force){
   if(!seaOpen()||seaWatchBusy||seaLeaving)return;
   const age=window.SeaView?SeaView.stateAge():Infinity;
-  if(!force&&age<1500)return;
+  if(!force&&age<2500)return;
   seaWatchBusy=true;
   try{
     if(!socket.connected){seaSay('Reconnecting…');if(age>8000){try{socket.connect()}catch(e){}}return}
@@ -2152,7 +2168,7 @@ async function seaWatchdog(force){
     if(r&&r.ok&&r.sea){applySea(r.sea);if(seaIntent.mx||seaIntent.my)seaEmitIntent();return}
     seaFails++;
     if(r&&r.err==='no_session'&&seaFails>=2){seaWatchBusy=false;seaLost();return}
-    seaSay('Reconnecting…');
+    if(age>4500)seaSay('Reconnecting…'); // a slow reply or one dropped packet is not a lost connection: only a long silence is
     // connected on paper but silent for seconds = half-dead connection (phone slept, Wi-Fi <-> mobile switch): replace the socket
     if(!r&&age>6000&&++seaStall>=2){seaStall=0;try{socket.disconnect();socket.connect()}catch(e){}}
   }finally{seaWatchBusy=false}
@@ -2360,25 +2376,82 @@ let seaStickId=null;
   const end=e=>{if(e.pointerId!==seaStickId)return;seaStickId=null;st.classList.remove('on');kn.style.transform='';seaSendIntent(0,0)};
   ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>st.addEventListener(ev,end));
   if(window.SeaView&&SeaView.bindKeys)SeaView.bindKeys((mx,my)=>{if(seaOpen()&&seaStickId===null)seaSendIntent(mx,my)}); // desktop: WASD / arrows
-  window.addEventListener('keydown',e=>{if(isTyping(e))return;if((e.key===' '||e.code==='Space')&&seaOpen()){e.preventDefault();seaFire()}});
+  // ---- joystick safety net (the island-run stick, its aim stick and the sea stick): a stick can only stay 'held' while a finger really is down.
+  // pointerup/cancel are caught on the WINDOW (the finger may have drifted off the stick), and touchend/cancel with no touches left releases everything.
+  const stickBusy=()=>joy.on||aim.on||seaStickId!==null;
+  const releaseSticks=()=>{try{relJoy()}catch(e){}try{if(aim.on){aim.on=false;$('aimt').style.display='none'}}catch(e){}try{if(seaStickId!==null)seaResetStick()}catch(e){}};
+  const byId=e=>{
+    try{if(joy.on&&e.pointerId===joy.id)relJoy()}catch(x){}
+    try{if(aim.on&&e.pointerId===aim.id){aim.on=false;$('aimt').style.display='none'}}catch(x){}
+    try{if(seaStickId!==null&&e.pointerId===seaStickId)seaResetStick()}catch(x){}};
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>window.addEventListener(ev,byId,true));
+  let touchN=0,touchAt=0,ptrType='';
+  const tcount=e=>{touchN=e.touches?e.touches.length:0;touchAt=performance.now();if(touchN===0&&stickBusy())releaseSticks()};
+  ['touchstart','touchmove','touchend','touchcancel'].forEach(ev=>window.addEventListener(ev,tcount,{capture:true,passive:true}));
+  window.addEventListener('pointerdown',e=>{ptrType=e.pointerType},true);
+  window.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&e.buttons===0&&stickBusy())releaseSticks()},true); // mouse released outside the window
+  addEventListener('blur',releaseSticks);document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseSticks()});addEventListener('pagehide',releaseSticks);
+  setInterval(()=>{if(stickBusy()&&ptrType==='touch'&&touchN===0&&performance.now()-touchAt>350)releaseSticks()},300); // last resort: a stick that is 'held' while no finger touches the screen
+  window.addEventListener('keydown',e=>{if(isTyping(e))return;if((e.key===' '||e.code==='Space')&&seaOpen()){e.preventDefault();if(e.repeat||seaAiming!==null)return;seaAiming='kbd';try{SeaView.setAim(true)}catch(x){}seaMelee()}});
+window.addEventListener('keyup',e=>{if((e.key===' '||e.code==='Space')&&seaAiming==='kbd')seaAimEnd(true)});
 })();
 
 // ---- attack (bottom right): tap to fire, the wedge shows the reload ----
-async function seaFire(){ // Attack = fire the bow cannon straight ahead (the server simulates the ball and the damage)
+// PRESS = proximity attack (instant, hits whatever is close). HOLD = aim guide in front of the bow. RELEASE = cannon ball.
+let seaMeleeReady=0,seaCannonReady=0,seaAiming=null;
+async function seaMelee(){
+  if(!SEA||!seaOpen()||seaLeaving)return;
+  const now=performance.now();if(now<seaMeleeReady)return;
+  let targetUid=null;
+  if(SEA.others&&SEA.others.length){const range=(SEA.mp&&SEA.mp.pvpRange)||90;const mates=new Set((SEA.team&&SEA.team.members||[]).map(m=>m.uid));const near=SEA.others.find(o=>o.dist<=range&&!mates.has(o.uid));if(near)targetUid=near.uid}
+  const cfg=SEA.cfg||{};
+  seaMeleeReady=now+(targetUid?(cfg.pvpCooldownMs||900):(cfg.attackCooldownMs||800));
+  const r=await emitP('sea:act',targetUid?{op:'attack',targetUid}:{op:'attack'},2000);
+  if(!r)return;
+  if(r.sea)applySea(r.sea);
+  if(r.err==='cooldown'){seaMeleeReady=performance.now()+150;return}
+  if(!r.ok){seaMeleeReady=0;if(r.err==='range')toast('Too far to engage');return}
+  if(r.sunk)toast('⚔️ Ship sunk!');
+  else if(r.hit&&targetUid)toast('⚔️ Hit!');
+  else if(r.hit===false){svx('popup','💨');sfx('splash')}
+}
+async function seaCannon(){
   if(!SEA||!seaOpen()||seaLeaving)return;
   const btn=$('seaAttack'),now=performance.now();
-  if(now<seaAtkReady){btn.classList.remove('shake');void btn.offsetWidth;btn.classList.add('shake');return} // still reloading
+  if(now<seaCannonReady){btn.classList.remove('shake');void btn.offsetWidth;btn.classList.add('shake');return} // still reloading
   const cfg=SEA.cfg||{};
-  seaAtkCd=cfg.attackCooldownMs||800;
-  seaAtkReady=now+seaAtkCd; // optimistic reload; undone below if the server did not fire
+  seaCannonReady=now+(cfg.cannonCooldownMs||800);
+  seaAtkCd=cfg.cannonCooldownMs||800;seaAtkReady=seaCannonReady; // the dark wedge on the button shows the cannon reload
   try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}
-  const r=await emitP('sea:act',{op:'attack'},2000);
+  const r=await emitP('sea:act',{op:'cannon'},2000);
   if(!r)return;
   if(r.sea)applySea(r.sea); // the 'fire' event inside plays the boom and the muzzle flash
-  if(r.err==='cooldown'){seaAtkReady=performance.now()+150;return}
-  if(!r.ok){seaAtkReady=0;return} // nothing was fired: no reload
+  if(r.err==='cooldown'){seaCannonReady=performance.now()+150;seaAtkReady=seaCannonReady;return}
+  if(!r.ok){seaCannonReady=0;seaAtkReady=0}
 }
-$('seaAttack').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();seaFire()});
+function seaAimEnd(fire){
+  if(seaAiming===null)return;const id=seaAiming;seaAiming=null;
+  try{SeaView.setAim(false)}catch(e){}
+  $('seaAttack').classList.remove('aim');
+  if(fire)seaCannon()}
+function seaMineDrop(){
+  if(!SEA||!seaOpen()||seaLeaving)return;
+  const inv=SEA.inv||{};if(!(inv.mines>0)){toast('💣 No mines — collect more at sea');return}
+  seaUiCall('mine',$('seaMine'),'sea:act',{op:'mine'},'','Mine');
+}
+$('seaMine').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();seaMineDrop()});
+const seaAtkEl=$('seaAttack');
+seaAtkEl.addEventListener('pointerdown',e=>{
+  e.preventDefault();e.stopPropagation();
+  if(!SEA||!seaOpen()||seaLeaving)return;
+  seaAiming=e.pointerId;try{seaAtkEl.setPointerCapture(e.pointerId)}catch(x){}
+  seaAtkEl.classList.add('aim');try{SeaView.setAim(true)}catch(x){}
+  seaMelee();
+});
+seaAtkEl.addEventListener('pointerup',e=>{if(e.pointerId===seaAiming)seaAimEnd(true)});
+['pointercancel','lostpointercapture'].forEach(ev=>seaAtkEl.addEventListener(ev,e=>{if(e.pointerId===seaAiming)seaAimEnd(false)}));
+window.addEventListener('pointerup',e=>{if(e.pointerId===seaAiming)seaAimEnd(true)},true); // released while the finger drifted off the button
+window.addEventListener('blur',()=>seaAimEnd(false));
 
 // ---- emoji (bottom left): tap = open the ring, then tap an emoji · or press, drag onto an emoji and release ----
 const SEA_EMOJIS=['👋','😂','🏳️','⚔️','🤝','⛵','💎','🆘','👍','❤️'];
@@ -2538,4 +2611,21 @@ setInterval(()=>{const au=['auth','authMail'].some(i=>$(i).style.display==='flex
   addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&['+','-','=','0'].includes(e.key))e.preventDefault()});
   if(window.visualViewport)visualViewport.addEventListener('resize',()=>{if(visualViewport.scale>1.01){try{const m=document.querySelector('meta[name=viewport]'),o=m.getAttribute('content');m.setAttribute('content',o.replace('maximum-scale=1','maximum-scale=1.01'));setTimeout(()=>m.setAttribute('content',o),60)}catch(e){}}})})();
 $('invMenu').onclick=()=>inviteFriends('home');$('invHost').onclick=()=>inviteFriends('host_room');
+</script>
+<script>
+(function(){
+  // Loads the two third-party libraries with a time limit (and a same-origin copy of socket.io first), then starts the game script.
+  function load(u,ms){return new Promise(function(res){var s=document.createElement('script'),done=false,t=setTimeout(function(){if(!done){done=true;res(false)}},ms);
+    s.onload=function(){if(!done){done=true;clearTimeout(t);res(true)}};s.onerror=function(){if(!done){done=true;clearTimeout(t);res(false)}};s.async=true;s.src=u;document.head.appendChild(s)})}
+  var pIo=load('/socket.io/socket.io.js',3500).then(function(ok){return(ok&&window.io)?true:load('https://cdn.socket.io/4.7.5/socket.io.min.js',5000)});
+  var pSb=load('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js',3500).then(function(ok){return(ok&&window.supabase)?true:load('https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js',3500)});
+  Promise.all([pIo,pSb]).then(function(){
+    if(!window.io){ // still no socket library: one automatic retry, then carry on (the menu still shows)
+      try{if(!sessionStorage.getItem('ioRetry')){sessionStorage.setItem('ioRetry','1');location.reload();return}}catch(e){}
+      window.io=function(){var n=function(){};return{on:n,once:n,emit:n,off:n,connect:n,disconnect:n,connected:false,io:{on:n,opts:{}}}};
+    }else{try{sessionStorage.removeItem('ioRetry')}catch(e){}}
+    var s=document.createElement('script');s.text=document.getElementById('mainjs').text;document.body.appendChild(s);
+    if(document.readyState==='complete')window.dispatchEvent(new Event('load')); // listeners the game registered for 'load' (service worker) still run
+  });
+})();
 </script></body></html>
