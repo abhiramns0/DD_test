@@ -20,6 +20,7 @@ const CFG = {
   mineDamage: 85,          // a player boat has 100 hp: a mine almost destroys it
   mineTtlMs: 30000,
   mineArmMs: 900,
+  mineFuseMs: 500,         // a touched mine goes red at once and blasts this long after
   mineTriggerR: 64,        // a boat this close sets a mine off
   mineBlastR: 125,         // everything inside this radius is hit (less at the edge)
   mineDropBack: 72,        // dropped this far behind the boat
@@ -481,6 +482,14 @@ function resolveBoatBoat(a, b, r) {
 }
 
 let shotSeq = 0;
+let fxSeq = 0;
+// distance from point (qx,qy) to the segment (ax,ay)-(bx,by): shots are swept so fast balls / point-blank shots never tunnel through a boat
+function segDist(ax, ay, bx, by, qx, qy) {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+  let t = l2 > 1e-6 ? ((qx - ax) * dx + (qy - ay) * dy) / l2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(ax + dx * t - qx, ay + dy * t - qy);
+}
 function scare(e, fx, fy, now) { // an attacked peaceful boat flees from the attacker for a while
   if (e && e.kind === 'boat' && !e.aggro) { e.fleeUntil = now + 9000; e.fleeX = fx; e.fleeY = fy; }
 }
@@ -531,7 +540,7 @@ function tickShared(dt, now, playerPositions) {
         const lead = best / CFG.cannonSpeed;
         const ang = Math.atan2(target.y + (target.vy || 0) * lead - n.y, target.x + (target.vx || 0) * lead - n.x) + (Math.random() - 0.5) * 0.14;
         W.shots.push({
-          id: 'n' + (++shotSeq), x: n.x + Math.cos(ang) * (CFG.boatRadius + 10), y: n.y + Math.sin(ang) * (CFG.boatRadius + 10),
+          id: 'n' + (++shotSeq), px: n.x, py: n.y, x: n.x + Math.cos(ang) * (CFG.boatRadius + 10), y: n.y + Math.sin(ang) * (CFG.boatRadius + 10),
           vx: Math.cos(ang) * CFG.cannonSpeed * 0.85, vy: Math.sin(ang) * CFG.cannonSpeed * 0.85,
           left: CFG.npcShootRange + 60, owner: n.id, ownerName: 'a pirate', npc: true, dmg: CFG.npcShotDamage
         });
@@ -765,16 +774,16 @@ function tickMines(now, sess) {
   const keep = [];
   const falloff = (d) => (d <= CFG.mineTriggerR ? 1 : Math.max(0.35, 1 - 0.45 * (d - CFG.mineTriggerR) / Math.max(1, CFG.mineBlastR - CFG.mineTriggerR)));
   for (const m of W.mines) {
-    let trig = false;
-    if (now - m.at >= CFG.mineArmMs) {
+    let trig = !!m.trigAt && now - m.trigAt >= CFG.mineFuseMs;
+    if (!m.trigAt && now - m.at >= CFG.mineArmMs) {
       for (const [, slot] of sess) {
         const ps = slot && slot.session;
-        if (ps && ps.status === 'sailing' && !ps.arena && ps.player.alive && Math.hypot(ps.player.x - m.x, ps.player.y - m.y) <= CFG.mineTriggerR) { trig = true; break; }
+        if (ps && ps.status === 'sailing' && !ps.arena && ps.player.alive && Math.hypot(ps.player.x - m.x, ps.player.y - m.y) <= CFG.mineTriggerR) { m.trigAt = now; break; }
       }
-      if (!trig) for (const e of W.npcs) if (e.alive && Math.hypot(e.x - m.x, e.y - m.y) <= CFG.mineTriggerR) { trig = true; break; }
+      if (!m.trigAt) for (const e of W.npcs) if (e.alive && Math.hypot(e.x - m.x, e.y - m.y) <= CFG.mineTriggerR) { m.trigAt = now; break; }
     }
     if (!trig) { keep.push(m); continue; }
-    W.fx.push({ x: m.x, y: m.y, k: 'boom', at: now });
+    W.fx.push({ id: ++fxSeq, x: m.x, y: m.y, k: 'boom', at: now });
     for (const [uid, slot] of sess) { // blast: everything inside the radius is hurt, a little less towards the edge
       const ps = slot && slot.session;
       if (!ps || ps.status !== 'sailing' || ps.arena || !ps.player.alive) continue;
@@ -809,7 +818,7 @@ function fireCannon(session, uid, name, now) {
   ensureShared();
   const f = p.facing || 0, c = Math.cos(f), s = Math.sin(f);
   SHARED.shots.push({
-    id: 'c' + (++shotSeq), x: p.x + c * (CFG.boatRadius + 10), y: p.y + s * (CFG.boatRadius + 10),
+    id: 'c' + (++shotSeq), px: p.x, py: p.y, x: p.x + c * (CFG.boatRadius * 0.6), y: p.y + s * (CFG.boatRadius * 0.6),
     vx: c * CFG.cannonSpeed, vy: s * CFG.cannonSpeed, left: CFG.cannonRange,
     owner: uid, ownerName: String(name || 'Sailor').slice(0, 14), npc: false, dmg: CFG.cannonDamage
   });
@@ -825,6 +834,7 @@ function tickShots(dt, now, sess) {
   W.fx = W.fx.filter((f) => now - f.at < 900);
   const keep = [];
   for (const s of W.shots) {
+    const ox = s.px === undefined ? s.x : s.px, oy = s.py === undefined ? s.y : s.py; // segment start (shooter centre on the first tick)
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.left -= Math.hypot(s.vx, s.vy) * dt;
@@ -842,12 +852,12 @@ function tickShots(dt, now, sess) {
     if (mi >= 0) {
       const m = W.mines[mi];
       W.mines.splice(mi, 1);
-      W.fx.push({ x: m.x, y: m.y, k: 'boom', at: now });
+      W.fx.push({ id: ++fxSeq, x: m.x, y: m.y, k: 'boom', at: now });
       continue;
     }
     if (!s.npc) {
       for (const e of [...W.npcs, ...W.wildlife]) {
-        if (!e.alive || Math.hypot(e.x - s.x, e.y - s.y) > CFG.cannonHitR) continue;
+        if (!e.alive || segDist(ox, oy, s.x, s.y, e.x, e.y) > CFG.cannonHitR) continue;
         e.hp -= s.dmg;
         W.fx.push({ x: e.x, y: e.y, k: 'hit', at: now });
         if (owner) scare(e, owner.player.x, owner.player.y, now); else scare(e, s.x - s.vx, s.y - s.vy, now);
@@ -865,7 +875,7 @@ function tickShots(dt, now, sess) {
         if (!ps || ps.status !== 'sailing' || ps.arena || !ps.player.alive || uid === s.owner) continue;
         if (!s.npc && sameTeam(s.owner, uid)) continue;
         const pl = ps.player;
-        if (Math.hypot(pl.x - s.x, pl.y - s.y) > CFG.boatRadius + 12) continue;
+        if (segDist(ox, oy, s.x, s.y, pl.x, pl.y) > CFG.boatRadius + 12) continue;
         const dmg = s.npc ? s.dmg : CFG.cannonPlayerDamage;
         pl.hp -= dmg;
         W.fx.push({ x: pl.x, y: pl.y, k: 'hit', at: now });
@@ -878,7 +888,7 @@ function tickShots(dt, now, sess) {
         break;
       }
     }
-    if (!used) keep.push(s);
+    if (!used) { s.px = s.x; s.py = s.y; keep.push(s); }
   }
   W.shots = keep;
   tickMines(now, sess);
@@ -1140,8 +1150,8 @@ function view(session, opts) {
           }))
       ),
     shots: SHARED.shots.filter((s) => near(s)).map((s) => ({ id: s.id, x: r1(s.x), y: r1(s.y), vx: r1(s.vx), vy: r1(s.vy), npc: !!s.npc, mine: s.owner === session.uid })),
-    fx: SHARED.fx.filter((f) => near(f)).map((f) => ({ x: r1(f.x), y: r1(f.y), k: f.k, age: Date.now() - f.at })),
-    mines: SHARED.mines.filter((m) => near(m)).map((m) => ({ id: m.id, x: r1(m.x), y: r1(m.y), mine: m.owner === session.uid, age: Date.now() - m.at })),
+    fx: SHARED.fx.filter((f) => near(f)).map((f) => ({ id: f.id || 0, x: r1(f.x), y: r1(f.y), k: f.k, age: Date.now() - f.at })),
+    mines: SHARED.mines.filter((m) => near(m)).map((m) => ({ id: m.id, x: r1(m.x), y: r1(m.y), mine: m.owner === session.uid, age: Date.now() - m.at, trig: m.trigAt ? Date.now() - m.trigAt : -1 })),
     minePacks: SHARED.minePacks.filter((m) => !m.taken && near(m)).map((m) => ({ id: m.id, x: r1(m.x), y: r1(m.y) })),
     inv: { mines: session.mines | 0, maxMines: CFG.mineMax, gems: session.inv.gems | 0, gold: session.inv.gold | 0, cap: invCap(session.level), level: session.level },
     chests: session.islets
@@ -1523,7 +1533,7 @@ function viewWithOthers(session, others, now, opts) {
   v.others = others || [];
   const p = session.player;
   v.races = racesNear(p.x, p.y);
-  v.events = eventsNear(p.x, p.y);
+  v.arenas = eventsNear(p.x, p.y); // event circles (the drained sound/UI events stay in v.events)
   v.team = teamInfo(session.uid);
   v.selfUid = session.uid;
   // pending invite for this player
@@ -1564,7 +1574,7 @@ function viewWithOthers(session, others, now, opts) {
 }
 
 module.exports = {
-  _x: { steerNpc, resolveBoatBoat, resolveCircle, r1, r2, rng },
+  _x: { segDist, fxSeq: () => ++fxSeq, steerNpc, resolveBoatBoat, resolveCircle, r1, r2, rng },
   CFG,
   EMOJIS,
   createSession,
