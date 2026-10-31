@@ -81,7 +81,37 @@ function create({ pool = null, log = console, file = process.env.RACE_BOARD_FILE
     if (pending.size && !timer) timer = setTimeout(() => { timer = null; flush(); }, 500);
   }
 
-  return { init, save, flush };
+  // ---- event scores (Battle Arena kills, Lava Run distance): best SCORE per player, higher is better
+  const evPending=new Map(),evMem=new Map();let evTimer=null,evBusy=false;
+  async function initEvents(){
+    if(pool){
+      try{
+        await pool.query(`CREATE TABLE IF NOT EXISTS lb_event_board (
+          event_id text NOT NULL, player_id text NOT NULL, name text NOT NULL, best_score integer NOT NULL CHECK (best_score > 0),
+          achieved_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (event_id, player_id))`);
+        const r=await pool.query('SELECT event_id, player_id, name, best_score FROM lb_event_board ORDER BY best_score DESC LIMIT 500');
+        return r.rows.map(x=>({eventId:x.event_id,uid:x.player_id,name:x.name,score:x.best_score}));
+      }catch(e){log.error('[event-board] load failed:',e.message);return[]}
+    }
+    try{const rows=JSON.parse(fs.readFileSync(file+'.events','utf8'));for(const r of rows)evMem.set(r.eventId+'|'+r.uid,r);return rows}catch(e){return[]}
+  }
+  function saveScore(row){
+    if(!row||!row.eventId||!row.uid||!(row.score>0))return;
+    const k=row.eventId+'|'+row.uid,p=evPending.get(k);if(p&&p.score>=row.score)return;
+    evPending.set(k,{eventId:row.eventId,uid:row.uid,name:String(row.name||'Sailor').slice(0,14),score:Math.round(row.score)});
+    if(!evTimer)evTimer=setTimeout(()=>{evTimer=null;flushEvents()},500);
+  }
+  async function flushEvents(){
+    if(evBusy||!evPending.size)return;evBusy=true;const batch=[...evPending.values()];evPending.clear();
+    try{
+      if(pool){for(const v of batch)await pool.query(`INSERT INTO lb_event_board (event_id, player_id, name, best_score) VALUES ($1,$2,$3,$4)
+        ON CONFLICT (event_id, player_id) DO UPDATE SET name=EXCLUDED.name, best_score=GREATEST(lb_event_board.best_score,EXCLUDED.best_score),
+        achieved_at=CASE WHEN EXCLUDED.best_score>lb_event_board.best_score THEN now() ELSE lb_event_board.achieved_at END`,[v.eventId,v.uid,v.name,v.score])}
+      else{for(const v of batch){const k=v.eventId+'|'+v.uid,o=evMem.get(k);if(!o||v.score>o.score)evMem.set(k,v)}fs.writeFileSync(file+'.events',JSON.stringify([...evMem.values()]))}
+    }catch(e){log.error('[event-board] save failed (will retry):',e.message);for(const v of batch)if(!evPending.has(v.eventId+'|'+v.uid))evPending.set(v.eventId+'|'+v.uid,v);if(!evTimer)evTimer=setTimeout(()=>{evTimer=null;flushEvents()},5000)}
+    evBusy=false;if(evPending.size&&!evTimer)evTimer=setTimeout(()=>{evTimer=null;flushEvents()},500);
+  }
+  return { init, save, flush: async()=>{await flush();await flushEvents()}, initEvents, saveScore };
 }
 
 module.exports = { create };
