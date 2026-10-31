@@ -13,7 +13,7 @@ const CFG = {
   speed: 165,
   npcSpeed: 70,
   wildSpeed: 55,
-  tickHz: 15,
+  tickHz: 10,              // server pushes ~10 Hz; client predicts + interpolates
   npcBoats: 14,            // density of NPC boats (was 5)
   npcAggroShare: 0.75,     // 75% of NPC boats are hostile; the rest only wander and run away when attacked
   mineMax: 3,
