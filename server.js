@@ -1,7 +1,8 @@
 'use strict';
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const Sea=require('./sea'); // open-sea rules (pure) + multiplayer helpers
-const SEA_PROTO=4; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
+const Arena=require('./arena'); // personal event arenas (Battle Arena, Lava Run)
+const SEA_PROTO=5; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
 const seaSessions=new Map(); // uid -> {session, sockId, name, emoji, emojiUntil, emojiMeta, proto, dropAt, saveTimer, saving, again}
 const seaVitals=new Map();   // uid -> {hp,at}  boat health at the moment the player left the sea; it keeps regenerating while away (computed lazily)
 const seaCooldown=new Map(); // uid -> timestamp: 'Leave Sea' / being sunk blocks sailing out again until then. Docking at home never sets it.
@@ -14,7 +15,7 @@ function seaVitalsPack(uid,now){
 function seaVoyagerList(){
   const list=[];
   for(const [uid,slot] of seaSessions){
-    if(!slot||!slot.session||slot.session.status!=='sailing')continue;
+    if(!slot||!slot.session||slot.session.status!=='sailing'||slot.session.arena)continue; // players inside an event arena are not in the open sea
     list.push({uid,name:slot.name,player:slot.session.player,emoji:slot.emoji,emojiUntil:slot.emojiUntil,clanId:null});
   }
   return list}
@@ -27,6 +28,8 @@ function seaSlotFor(uid,s){
 // full=true -> includes the static world (islets, cfg). Sockets that did not announce proto>=2 always get full snapshots.
 function seaPackFor(uid,slot,now,voyagers,full){
   const sess=slot.session,t=now||Date.now();
+  if(sess.arena){const f=!!full||(slot.proto|0)<2||slot.forceFull;slot.forceFull=false;return Arena.view(sess,t,{full:f,proto:SEA_PROTO})}
+  if(slot.forceFull){full=true;slot.forceFull=false} // first snapshot after an event arena: bring the sea world back
   const others=Sea.othersView(uid,sess.player.x,sess.player.y,voyagers||seaVoyagerList(),t);
   return Sea.viewWithOthers(sess,others,t,{full:!!full||(slot.proto|0)<2,proto:SEA_PROTO})}
 function seaEmitTo(uid,event,payload){
@@ -53,8 +56,17 @@ async function seaSaveNow(uid,slot){
   if(slot.again){slot.again=false;seaQueueSave(uid,slot)}}
 // Ends a voyage on the server (dock, leave, sunk, or connection never came back). The boat's health is remembered so it keeps
 // regenerating; leaving / being sunk starts the sail-out cooldown.
+function seaFinishArena(uid,slot,now,why){ // records the score, returns the boat to the sea next to the event circle
+  const sess=slot.session,res=Arena.result(sess);if(!res)return null;
+  const ev=Sea.eventById(res.kind),rec=Sea.eventRecord(res.kind,uid,slot.name||'Sailor',res.score);
+  Arena.leave(sess,ev);
+  if(ev){const p=sess.player,a=Math.atan2(p.y-ev.y,p.x-ev.x);p.x=ev.x+Math.cos(a)*(ev.r+60);p.y=ev.y+Math.sin(a)*(ev.r+60)}
+  slot.forceFull=true;
+  seaEmitTo(uid,'sea:event',{op:'result',kind:res.kind,score:res.score,wave:res.wave,why:why,best:rec.best,rank:rec.rank,improved:rec.improved,name:ev?ev.name:''});
+  return res}
 function seaEnd(uid,slot,now,o){
   o=o||{};
+  if(slot.session.arena)seaFinishArena(uid,slot,now,'left');
   // cargo rules: dock = banked; Leave Sea / lost connection = half is lost to the sea; sunk = everything floats
   const p=slot.session.player,r=Sea.returnHome(slot.session,{mode:o.sunk?'sunk':(o.leave||o.timeout)?'leave':'dock'});
   if(r.ok&&r.dropped&&p){
@@ -135,6 +147,7 @@ const board=require('./leaderboard').create(console);
 const island=require('./island-store').create({pool:board.getPool(),log:console}); // persistent private islands (island.js = rules, island-store.js = storage)
 const raceStore=require('./race-store').create({pool:board.getPool(),log:console}); // race leaderboards survive restarts (PostgreSQL, or a JSON file without a database)
 Sea.setBoardSaver(r=>raceStore.save(r));
+Sea.setEventSaver(r=>raceStore.saveScore(r));
 const auth=require('./auth').create(console); // Supabase sign-in (Google / Apple / email). Optional: without it everyone is a guest.
 // Developer-only reset: set ADMIN_KEY in the environment, then open  /admin/clear-leaderboard?key=<ADMIN_KEY>&confirm=yes
 const adminClear=()=>board.clear();
@@ -275,6 +288,25 @@ io.on('connection',s=>{
     const mx=d&&typeof d.mx==='number'&&isFinite(d.mx)?Math.max(-1,Math.min(1,d.mx)):0;
     const my=d&&typeof d.my==='number'&&isFinite(d.my)?Math.max(-1,Math.min(1,d.my)):0;
     Sea.setIntent(slot.session,mx,my,Date.now())});
+  s.on('sea:event',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
+    if(!identUid)return reply({ok:false,err:'not_ready'});
+    if(!d||typeof d!=='object'||!lim('seaUi',8,3))return reply({ok:false,err:'busy'});
+    const slot=seaSlotFor(identUid,s);if(!slot||!slot.session||slot.session.status!=='sailing')return reply({ok:false,err:'no_session'});
+    const now=Date.now(),sess=slot.session,p=sess.player;
+    if(d.op==='join'){
+      const ev=Sea.eventById(String(d.id||''));
+      if(!ev)return reply({ok:false,err:'no_event'});
+      if(sess.arena)return reply({ok:false,err:'already'});
+      if(!p.alive)return reply({ok:false,err:'dead'});
+      if(Math.hypot(ev.x-p.x,ev.y-p.y)>ev.r)return reply({ok:false,err:'far'});
+      try{Sea.raceAbandon(identUid)}catch(e){}
+      try{const tl=Sea.teamLeave(identUid);if(tl&&tl.ok)for(const m of tl.members||[])seaEmitTo(m,'sea:team',{op:'left',uid:identUid,leader:tl.leader,members:tl.members,name:slot.name})}catch(e){} // teams do not follow you into a personal arena
+      Arena.start(sess,ev,now);slot.forceFull=true;
+      return reply({ok:true,sea:seaPackFor(identUid,slot,now)})}
+    if(d.op==='exit'){
+      if(sess.arena)seaFinishArena(identUid,slot,now,'exit');
+      return reply({ok:true,sea:seaPackFor(identUid,slot,now)})}
+    reply({ok:false,err:'bad_op'})});
   s.on('sea:net',d=>{s.seaPoll=!!(d&&d.poll)}); // client on a long-polling connection (some Wi-Fi blocks WebSockets): it gets fewer, steadier pushes
   s.on('sea:tick',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
@@ -286,6 +318,9 @@ io.on('connection',s=>{
     if(!d||typeof d!=='object'||!lim('seaAct',10,4))return reply({ok:false,err:'busy'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const now=Date.now();let r,sunkSlot=null,sunkUid=null;
+    if(slot.session.arena){ // inside an event arena only the weapons work
+      r=d.op==='attack'?Arena.melee(slot.session,now):d.op==='cannon'?Arena.cannon(slot.session,now):{ok:false,err:'not_here'};
+      return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}))}
     if(d.op==='attack'){
       if(d.targetUid&&typeof d.targetUid==='string'&&d.targetUid!==identUid){
         const tSlot=seaSessions.get(d.targetUid);
@@ -431,7 +466,7 @@ setInterval(()=>{
   // soft boat-vs-boat collisions between living sailors
   {const live=[];
     for(const [uid,slot] of seaSessions){
-      if(slot&&slot.session&&slot.session.status==='sailing'&&slot.session.player&&slot.session.player.alive)
+      if(slot&&slot.session&&slot.session.status==='sailing'&&!slot.session.arena&&slot.session.player&&slot.session.player.alive)
         live.push(slot.session.player)}
     for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
       const a=live[i],b=live[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||0.001,r=Sea.CFG.boatRadius*2;
@@ -444,6 +479,12 @@ setInterval(()=>{
       if(!slot.sockId&&slot.dropAt&&now>slot.dropAt){ // player never came back: save discoveries, free the boat
         const r=seaEnd(uid,slot,now,{timeout:true});
         if(r.ok)Promise.resolve(island.saveSea(uid,r.discoveries)).catch(()=>{});
+        continue}
+      if(slot.session.arena){ // personal event arena: its own simulation, nobody else is in it
+        const ar=Arena.tick(slot.session,dt,now);
+        if(ar&&ar.over)seaFinishArena(uid,slot,now,ar.why);
+        if(slot.sockId){const sock=io.sockets.sockets.get(slot.sockId);
+          if(sock&&!(sock.seaPoll&&((slot.pt=(slot.pt|0)+1)%2))){const pack=seaPackFor(uid,slot,now,voy,false);(pack.events&&pack.events.length?sock:sock.volatile).emit('sea:state',pack)}}
         continue}
       Sea.tick(slot.session,dt,now);
       // if the player was sunk by crocodile / NPC contact this frame, end the voyage
@@ -463,5 +504,5 @@ setInterval(()=>{
     for(const [u,t] of seaCooldown)if(t<=now)seaCooldown.delete(u)}
 },66)}
 
-srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init();raceStore.init().then(rows=>{Sea.loadRaceBoards(rows);if(rows.length)console.log('[race-board] restored',rows.length,'best times')}).catch(e=>console.error('[race-board] init',e.message))}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
+srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init();raceStore.init().then(rows=>{Sea.loadRaceBoards(rows);if(rows.length)console.log('[race-board] restored',rows.length,'best times');return raceStore.initEvents()}).then(ev=>{Sea.loadEventBoards(ev||[])}).catch(e=>console.error('[race-board] init',e.message))}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
 for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{raceStore.flush().catch(()=>{});seaFlushAll().catch(()=>{}).finally(()=>board.close().finally(()=>process.exit(0)))}); // flush gems + queued scores on redeploy/restart
