@@ -81,6 +81,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 @keyframes seaChestPop{from{opacity:0;translate:0 38px;scale:.25}to{opacity:1;translate:0 0;scale:1}}
 @keyframes seaChestBob{50%{transform:translateY(-5px)}}
 #sea button.seaAbort{position:absolute;z-index:6;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 142px);display:none;margin:0;padding:7px 12px;border:0;border-radius:999px;font-weight:800;font-size:12px;color:#fff;background:linear-gradient(#e5564a,#b83226);box-shadow:0 3px 0 #7d1f16,0 0 0 2px rgba(255,255,255,.6);cursor:pointer;touch-action:manipulation}
+#sea button.seaAbort.ev{top:calc(env(safe-area-inset-top,0px) + 10px);right:calc(env(safe-area-inset-right,0px) + 56px);padding:8px 15px;font-size:13px;letter-spacing:.6px}
 #seaConfirm{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:rgba(5,25,40,.55);padding:24px}
 #seaConfirm .cbox{background:#fff;color:var(--ink);border-radius:18px;padding:18px 18px 14px;max-width:320px;width:100%;box-shadow:0 6px 0 rgba(39,64,90,.3);text-align:center}
 #seaConfirm h3{margin:0 0 8px;font-size:18px}
@@ -458,7 +459,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="install"><span id="instTxt"></span><button id="instGo">Install</button><button id="instNo" aria-label="Dismiss">✕</button></div>
 <button id="shield" aria-label="Shield">🛡️</button><div id="aim" aria-label="Stun gun aim"><span class="gi">🔫</span><b id="aimt"></b><em id="aimn"></em></div><div id="dbg"></div>
 <script src="/island-view.js?v=4"></script>
- <script src="/sea-view.js?v=15"></script>
+ <script src="/sea-view.js?v=16"></script>
 <script type="text/plain" id="mainjs">
 const cv=document.getElementById('c'),$=id=>document.getElementById(id);let g=cv.getContext('2d');
 const PUSH_SLIDE_MS=800; // keep equal to CFG.push.slideMs in game.js
@@ -491,8 +492,8 @@ const SFX={
  hit(){sN(.12,'lowpass',1200,.8,.2);SFX.wood(.7)},
  splash(){sN(.25,'lowpass',1400,.6,.12);sN(.18,'highpass',3000,.5,.05,.04)},
  sink(){SFX.wood(1.2);sT(110,.9,'sawtooth',.08,.1,.3);sN(.6,'lowpass',500,.7,.22,.15)},
- coin(){sT(1318,.09,'square',.07);sT(1760,.28,'square',.06,.07);sT(2637,.22,'sine',.04,.08)},
- gem(){[1568,1976,2349,3136].forEach((f,i)=>{sT(f,.22,'sine',.07,i*.055);sT(f*2,.12,'triangle',.02,i*.055)})},
+ coin(){sT(1318,.09,'square',.16);sT(1760,.28,'square',.14,.07);sT(2637,.22,'sine',.1,.08)},
+ gem(){[1568,1976,2349,3136].forEach((f,i)=>{sT(f,.22,'sine',.17,i*.055);sT(f*2,.12,'triangle',.05,i*.055)})},
  chestPop(){sT(520,.14,'sine',.09,0,1.9);sT(1560,.2,'triangle',.04,.1);sN(.08,'highpass',5000,.5,.04,.1)},
  dockPop(){sT(784,.3,'sine',.07);sT(1047,.38,'sine',.06,.1)},
  racePop(){sT(262,.22,'sawtooth',.05);sT(330,.3,'sawtooth',.05,.18)},
@@ -505,11 +506,13 @@ const SFX={
   e.gain.setValueAtTime(.0001,t);e.gain.linearRampToValueAtTime(.16,t+.02);e.gain.setValueAtTime(.16,t+.62);e.gain.exponentialRampToValueAtTime(.0001,t+.75);
   o.start(t);l.start(t);o.stop(t+.8);l.stop(t+.8);sN(.6,'highpass',3200,.6,.04)},
  boom(){sT(90,.7,'sine',.4,0,.3);sN(.5,'lowpass',700,.7,.34);sN(.12,'highpass',2000,.7,.14);SFX.wood(.9)},
- mineGet(){sT(330,.14,'square',.05);sT(494,.2,'square',.05,.1)},
+ mineGet(){sT(330,.14,'square',.14);sT(494,.2,'square',.14,.1);sT(740,.22,'triangle',.1,.2)},
+ mineArm(){for(let i=0;i<4;i++){sT(i%2?1500:1100,.07,'square',.12,i*.12)}sT(220,.45,'sawtooth',.06,0)}, // a touched mine: rapid alarm beeps until it blasts
+ mineRefill(){[392,523,659,784].forEach((f,i)=>sT(f,.2,'triangle',.12,i*.07))},
  cp(){sT(880,.16,'sine',.09);sT(1319,.3,'sine',.08,.1)},
  finish(){[523,659,784,1047].forEach((f,i)=>sT(f,.3,'triangle',.09,i*.11))}
 };
-function sfx(name,a){if(!sfxOn())return;try{SFX[name](a)}catch(e){}}
+function sfx(name,a){if(!sfxOn())return;try{if(ac&&ac.state==='suspended')ac.resume().catch(()=>{});SFX[name](a)}catch(e){}}
 // the boat's wake: a very soft, slowly lapping noise that follows your speed
 let seaWave=null;
 function seaWaveInit(){if(seaWave||!ac)return;try{
@@ -1952,7 +1955,7 @@ window.addEventListener('resize',()=>{if(islOpen())islPaint();if(typeof seaOpen=
 
 // ---- Open Sea (exploration + multiplayer encounters) ----
 // Controls: joystick (bottom centre) · attack (bottom right) · emoji ring (bottom left) · ⚓ Leave (top right) · DOCK floats over the home island.
-const SEA_PROTO=5; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
+const SEA_PROTO=6; // must equal SEA_PROTO in server.js. After a deploy, a page with another value reloads itself once (stale-cache protection).
 let SEA=null,seaIntent={mx:0,my:0},seaLeaving=false;
 const seaOpen=()=>$('sea')&&$('sea').style.display==='flex';
 const seaPaint=()=>{try{const cv=$('seaCv');if(!cv)return;if(window.SeaView)SeaView.draw(cv,null)}catch(e){try{console.error('[seaPaint]',e)}catch(x){}}}; // redraw only (never touches the snapshot age)
@@ -1992,7 +1995,8 @@ function seaUpdateHud(){
   {const p=SEA.player||{},iv=SEA.inv||{},sg=[SEA.others&&SEA.others.length,Math.round(p.hp||0),p.maxHp,iv.gold,iv.gems,iv.cap,iv.mines,SEA.scene||'',(SEA.arena&&SEA.arena.kind)||''].join('|');
     if(sg===seaHudSig)return;seaHudSig=sg} // nothing visible changed: skip the DOM work (this runs ~15x a second)
   {const sc=SEA.scene,at=$('seaAttack'),mn=$('seaMine'),dd=at&&at.style.display;
-    if(at)at.style.display=sc==='lava'?'none':'';if(mn)mn.style.display=sc?'none':'';
+    if(at)at.style.display=sc==='lava'?'none':'';if(mn)mn.style.display=sc==='lava'?'none':'';
+    const ib=$('seaInv');if(ib)ib.style.display=sc?'none':'';   // no gold / gem cargo inside the arenas
     const em=$('seaEmoBtn');if(em)em.style.display=sc?'none':''}
   const n=(SEA.others&&SEA.others.length)||0,p=SEA.player||{};
   const t=$('seaHudTxt');if(t)t.textContent='👥 '+(n+1)+' sailing'; // everyone in the sea, you included
@@ -2012,12 +2016,12 @@ function seaUpdateHud(){
   seaSay(''); // no standing objectives: the line only shows short status notices (e.g. Reconnecting…)
 }
 function seaHandleEvents(evs){
-  (evs||[]).forEach(e=>{
+  (evs||[]).forEach(e=>{try{
     if(e.t==='treasure'){svx('popup','+'+(e.value||1)+' 💎');sfx('gem')}
     else if(e.t==='chest'){svx('popup','+'+(e.gold||0)+' 🪙');sfx('coin')}
     else if(e.t==='fire'){if(performance.now()-seaLocalFireAt>1500){sfx('cannon');svx('pulse')}}
     else if(e.t==='wave_clear'){toast('🌊 Wave '+e.wave+' cleared!');sfx('cp')}
-    else if(e.t==='lava_sink'){sfx('boom')}
+    else if(e.t==='lava_sink'){sfx('sink')}
     else if(e.t==='arena_start'){toast(e.kind==='lava'?'💀 Run! Keep ahead of the lava':'⚔️ Survive the waves!')}
     else if(e.t==='cannon_hurt'){toast('💥 Hit by '+(e.by||'a sailor'));sfx('wood')}
     else if(e.t==='pvp_hit'||e.t==='pvp_sink'){sfx('hit')}
@@ -2033,10 +2037,11 @@ function seaHandleEvents(evs){
     else if(e.t==='miss')svx('popup','💨')
     else if(e.t==='mine_pick'){toast('💣 Mine collected');sfx('mineGet')}
     else if(e.t==='mine_drop'){sfx('splash')}
-    else if(e.t==='mine_hit'){toast('💥 Mine! '+(e.by?'(set by '+e.by+')':''));sfx('boom')}
+    else if(e.t==='mine_hit'){toast('💥 Mine! '+(e.by?'(set by '+e.by+')':''))}
     else if(e.t==='race_cp'){toast('🏁 Checkpoint '+e.cp);sfx('cp')}
     else if(e.t==='race_finish'){sfx('finish');toast('🏆 Finished #'+e.place+' — '+(e.ms/1000).toFixed(1)+'s');}
-  });
+    else if(e.t==='mine_refill'){toast('💣 Mines refilled for wave '+e.wave);sfx('mineRefill')}
+  }catch(x){}});
 }
 // The team / race buttons are PERSISTENT elements: they are only rebuilt when what they offer changes (signature), never on every
 // server push. (They used to be destroyed and recreated ~15x per second, so a tap often hit a button that had just been replaced
@@ -2119,8 +2124,8 @@ function seaUpdateTeamRaceUI(){
       near=SEA.races.find(r=>Math.hypot((r.x||0)-(me.x||0),(r.y||0)-(me.y||0))<=joinR);
       if(near)sig='race:'+near.id;
     }
-    if(!near&&!racing&&!inArena&&me&&SEA.events&&SEA.events.length){ // Battle Arena / Lava Run circles
-      nearEv=SEA.events.find(e=>Math.hypot((e.x||0)-(me.x||0),(e.y||0)-(me.y||0))<=(e.r||210));
+    if(!near&&!racing&&!inArena&&me&&SEA.arenas&&SEA.arenas.length){ // Battle Arena / Lava Run circles
+      nearEv=SEA.arenas.find(e=>Math.hypot((e.x||0)-(me.x||0),(e.y||0)-(me.y||0))<=(e.r||210));
       if(nearEv)sig='ev:'+nearEv.id;
     }
     if(rf._sig!==sig){
@@ -2145,7 +2150,7 @@ function seaUpdateTeamRaceUI(){
     if(!rb._bound){rb._bound=true;rb._open=new Set();
       rb.addEventListener('click',e=>{const t=e.target.closest('[data-tg]');if(!t)return;e.stopPropagation();
         const id=t.getAttribute('data-tg');if(rb._open.has(id))rb._open.delete(id);else rb._open.add(id);rb._html='';seaUpdateTeamRaceUI()})}
-    const withBoard=[...(SEA.races||[]).map(r=>({id:r.id,name:r.name,icon:'🏁',rows:(r.board||[]).map(x=>({name:x.name,val:(x.ms/1000).toFixed(1)+'s'}))})),...(SEA.events||[]).map(e=>({id:e.id,name:e.name,icon:e.emoji||'⚔️',rows:(e.board||[]).map(x=>({name:x.name,val:x.score+(e.id==='lava'?' m':'')}))}))].filter(b=>b.rows.length);
+    const withBoard=[...(SEA.races||[]).map(r=>({id:r.id,name:r.name,icon:'🏁',rows:(r.board||[]).map(x=>({name:x.name,val:(x.ms/1000).toFixed(1)+'s'}))})),...(SEA.arenas||[]).map(e=>({id:e.id,name:e.name,icon:e.emoji||'⚔️',rows:(e.board||[]).map(x=>({name:x.name,val:x.score+(e.id==='lava'?' m':'')}))}))].filter(b=>b.rows.length);
     const html=withBoard.map(r=>{
       const open=rb._open.has(r.id),rows=r.rows.map((row,i)=>'<div class="rbRow'+(i>=5?' more':'')+'"'+(i>=5&&!open?' style="display:none"':'')+'>'+(i+1)+'. '+esc(row.name||'?')+' — '+row.val+'</div>').join('');
       const tg=r.rows.length>5?'<button type="button" class="rbTg" data-tg="'+esc(r.id)+'" aria-label="'+(open?'Show fewer':'Show all')+'">'+(open?'▴':'▾')+'</button>':'';
@@ -2166,8 +2171,11 @@ function seaRaceHudTick(){
     const a=SEA.arena||{};seaMusInt=Math.max(0,Math.min(1,(a.speedPct||0)/100));
     if(cd){cd.style.display='none';seaCdShown=null}
     if(rh){rh.style.display='block';const t=scene==='lava'?'💀 '+(a.score|0)+' m':'⚔️ Wave '+(a.wave|0)+' · Destroyed '+(a.score|0)+(a.resting?' · next wave…':'');if(rh._t!==t){rh._t=t;rh.textContent=t}}
-    if(ab){if(ab.style.display!=='block')ab.style.display='block';if(ab._m!=='ev'){ab._m='ev';ab.textContent='✕ Leave event'}}
+    {const sb=$('seaBack');if(sb&&sb.style.display!=='none')sb.style.display='none'} // the plain LEAVE button is replaced by Leave event
+    if(ab){if(ab.style.display!=='block')ab.style.display='block';if(ab._m!=='ev'){ab._m='ev';ab.classList.add('ev');ab.textContent='✕ Leave event'}}
     return}
+  {const sb=$('seaBack');if(sb&&sb.style.display==='none')sb.style.display=''}
+  if(ab&&ab.classList.contains('ev'))ab.classList.remove('ev');
   if(ab&&ab._m!=='race'){ab._m='race';ab.textContent='✕ Abort race'}
   if(!pr){if(rh)rh.style.display='none';if(cd)cd.style.display='none';if(ab)ab.style.display='none';seaCdShown=null;return}
   if(ab&&ab.style.display!=='block')ab.style.display='block';
@@ -2200,6 +2208,7 @@ function seaVersionMismatch(){ // server and page disagree about the wire format
   if(Date.now()-last<60000)return;
   try{sessionStorage.setItem('sea_reload',String(Date.now()))}catch(e){}
   toast('Game updated — reloading…');setTimeout(()=>location.reload(),700)}
+let seaTrigSeen=new Set(),seaBoomSeen=new Set();
 function applySea(sea){
   if(!sea)return;
   if(sea.proto!==SEA_PROTO)seaVersionMismatch();
@@ -2209,6 +2218,13 @@ function applySea(sea){
     const pl=sea.player,ids=new Set();
     for(const s of(sea.shots||[])){ids.add(s.id);if(!seaShotsSeen.has(s.id)&&!s.mine&&pl){const d=Math.hypot(s.x-pl.x,s.y-pl.y);if(d<650)sfx('cannon',Math.max(.15,.55*(1-d/650)))}}
     seaShotsSeen=ids;
+  }catch(e){}
+  try{ // mines that were just touched start their alarm; every new explosion is heard once
+    const tr=new Set();
+    for(const mn of(sea.mines||[]))if(mn.trig>=0){tr.add(mn.id);if(!seaTrigSeen.has(mn.id)&&sea.player&&Math.hypot(mn.x-sea.player.x,mn.y-sea.player.y)<700)sfx('mineArm')}
+    seaTrigSeen=tr;
+    for(const f of(sea.fx||[]))if(f.k==='boom'&&f.id){if(!seaBoomSeen.has(f.id)){seaBoomSeen.add(f.id);sfx('boom')}}
+    if(seaBoomSeen.size>60){const a=[...seaBoomSeen].slice(-20);seaBoomSeen=new Set(a)}
   }catch(e){}
   SEA=sea;seaFails=0;seaStall=0;
   try{SeaView.setState(sea)}catch(e){}
@@ -2450,7 +2466,7 @@ let seaStickId=null;
   window.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'&&e.buttons===0&&stickBusy())releaseSticks()},true); // mouse released outside the window
   addEventListener('blur',releaseSticks);document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseSticks()});addEventListener('pagehide',releaseSticks);
   setInterval(()=>{if(stickBusy()&&ptrType==='touch'&&touchN===0&&performance.now()-touchAt>350)releaseSticks()},300); // last resort: a stick that is 'held' while no finger touches the screen
-  window.addEventListener('keydown',e=>{if(isTyping(e))return;if((e.key===' '||e.code==='Space')&&seaOpen()){e.preventDefault();if(e.repeat||seaAiming!==null)return;seaAiming='kbd';try{SeaView.setAim(true)}catch(x){}seaMelee()}});
+  window.addEventListener('keydown',e=>{if(isTyping(e))return;if((e.key===' '||e.code==='Space')&&seaOpen()){e.preventDefault();if(e.repeat||seaAiming!==null)return;seaAiming='kbd';try{SeaView.setAim(true)}catch(x){}}});
 window.addEventListener('keyup',e=>{if((e.key===' '||e.code==='Space')&&seaAiming==='kbd')seaAimEnd(true)});
 })();
 
@@ -2482,7 +2498,7 @@ async function seaCannon(){
   seaCannonReady=now+(cfg.cannonCooldownMs||800);
   seaAtkCd=cfg.cannonCooldownMs||800;seaAtkReady=seaCannonReady; // the dark wedge on the button shows the cannon reload
   // INSTANT feedback the moment the finger lifts: boom, flash and the ball itself appear now; the server's real ball takes over a moment later
-  seaLocalFireAt=performance.now();sfx('cannon');svx('pulse');svx('localShot');
+  seaLocalFireAt=performance.now();sfx('cannon');svx('pulse');
   try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}
   const r=await emitP('sea:act',{op:'cannon'},2000);
   if(!r)return;
@@ -2507,7 +2523,6 @@ seaAtkEl.addEventListener('pointerdown',e=>{
   if(!SEA||!seaOpen()||seaLeaving)return;
   seaAiming=e.pointerId;try{seaAtkEl.setPointerCapture(e.pointerId)}catch(x){}
   seaAtkEl.classList.add('aim');try{SeaView.setAim(true)}catch(x){}
-  seaMelee();
 });
 seaAtkEl.addEventListener('pointerup',e=>{if(e.pointerId===seaAiming)seaAimEnd(true)});
 ['pointercancel','lostpointercapture'].forEach(ev=>seaAtkEl.addEventListener(ev,e=>{if(e.pointerId===seaAiming)seaAimEnd(false)}));
