@@ -2050,9 +2050,9 @@ const seaBusy={};
 async function seaUiCall(key,btn,ev,payload,okMsg,errPrefix){
   if(seaBusy[key])return;seaBusy[key]=true;if(btn)btn.disabled=true;
   try{
-    let r=await emitP(ev,payload,4500);
-    if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}r=await emitP(ev,payload,4500)}
-    if(!r){toast('⚠️ Slow connection — tap again');return}
+    let r=await emitP(ev,payload,7000);
+    if(r&&r.err==='not_ready'){try{await sendIdent()}catch(e){}r=await emitP(ev,payload,7000)}
+    if(!r){toast('⚠️ Server busy — tap again');return}
     if(r.sea)applySea(r.sea);
     if(r.ok){if(okMsg)toast(okMsg)}
     else{const m={far:'too far away',already:'already done',busy:'wait a moment',no_session:'not sailing',no_target:'sailor is gone',full:'team is full',target_teamed:'already in a team',not_leader:'only the leader can invite',no_invite:'invite expired',no_team:'team is gone',no_race:'race not found',no_event:'event not found',not_here:'not available here'}[r.err]||r.err||'failed';toast(errPrefix+': '+m)}
@@ -2408,8 +2408,8 @@ $('seaAbort').onclick=e=>{e.stopPropagation();if(SEA&&SEA.scene){seaAsk('Leave t
 $('seaChest').onclick=async e=>{
   e.stopPropagation();const b=$('seaChest'),id=b._id;if(!id||seaBusy.chest)return;seaBusy.chest=true;b.disabled=true;
   try{
-    const r=await emitP('sea:act',{op:'chest',id},4500);
-    if(!r){toast('⚠️ Slow connection — tap again');return}
+    const r=await emitP('sea:act',{op:'chest',id},6000);
+    if(!r){toast('⚠️ Server busy — tap again');return}
     if(r.sea)applySea(r.sea); // the '+n 🪙' popup comes from the chest event inside this snapshot
     if(!r.ok)toast(({resting:'🧰 The chest is resting — come back later',full:'🪙 Gold bag full — deposit at home first',far:'Stop closer to the island',busy:'Wait a moment'})[r.err]||('Chest: '+(r.err||'failed')));
   }finally{seaBusy.chest=false;b.disabled=false}};
@@ -2481,7 +2481,7 @@ async function seaMelee(){
   if(SEA.others&&SEA.others.length){const range=(SEA.mp&&SEA.mp.pvpRange)||90;const mates=new Set((SEA.team&&SEA.team.members||[]).map(m=>m.uid));const near=SEA.others.find(o=>o.dist<=range&&!mates.has(o.uid));if(near)targetUid=near.uid}
   const cfg=SEA.cfg||{};
   seaMeleeReady=now+(targetUid?(cfg.pvpCooldownMs||900):(cfg.attackCooldownMs||800));
-  const r=await emitP('sea:act',targetUid?{op:'attack',targetUid}:{op:'attack'},2000);
+  const r=await emitP('sea:act',targetUid?{op:'attack',targetUid}:{op:'attack'},3500);
   if(!r)return;
   if(r.sea)applySea(r.sea);
   if(r.err==='cooldown'){seaMeleeReady=performance.now()+150;return}
@@ -2500,7 +2500,7 @@ async function seaCannon(){
   // INSTANT feedback the moment the finger lifts: boom, flash and the ball itself appear now; the server's real ball takes over a moment later
   seaLocalFireAt=performance.now();sfx('cannon');svx('pulse');
   try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}
-  const r=await emitP('sea:act',{op:'cannon'},2000);
+  const r=await emitP('sea:act',{op:'cannon'},3500);
   if(!r)return;
   if(r.sea)applySea(r.sea); // the 'fire' event inside plays the boom and the muzzle flash
   if(r.err==='cooldown'){seaCannonReady=performance.now()+150;seaAtkReady=seaCannonReady;return}
