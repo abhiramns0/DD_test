@@ -2,7 +2,7 @@
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
 const Sea=require('./sea'); // open-sea rules (pure) + multiplayer helpers
 const Arena=require('./arena'); // personal event arenas (Battle Arena, Lava Run)
-const SEA_PROTO=5; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
+const SEA_PROTO=6; // bump when the sea wire format changes: the client reloads itself if it is older/newer than the server
 const seaSessions=new Map(); // uid -> {session, sockId, name, emoji, emojiUntil, emojiMeta, proto, dropAt, saveTimer, saving, again}
 const seaVitals=new Map();   // uid -> {hp,at}  boat health at the moment the player left the sea; it keeps regenerating while away (computed lazily)
 const seaCooldown=new Map(); // uid -> timestamp: 'Leave Sea' / being sunk blocks sailing out again until then. Docking at home never sets it.
@@ -319,7 +319,7 @@ io.on('connection',s=>{
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const now=Date.now();let r,sunkSlot=null,sunkUid=null;
     if(slot.session.arena){ // inside an event arena only the weapons work
-      r=d.op==='attack'?Arena.melee(slot.session,now):d.op==='cannon'?Arena.cannon(slot.session,now):{ok:false,err:'not_here'};
+      r=d.op==='attack'?Arena.melee(slot.session,now):d.op==='cannon'?Arena.cannon(slot.session,now):d.op==='mine'?Arena.mine(slot.session,now):{ok:false,err:'not_here'};
       return reply(Object.assign({ok:!!r.ok},r,{sea:seaPackFor(identUid,slot,now)}))}
     if(d.op==='attack'){
       if(d.targetUid&&typeof d.targetUid==='string'&&d.targetUid!==identUid){
