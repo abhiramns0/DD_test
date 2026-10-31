@@ -20,11 +20,13 @@ const CFG = {
   mineDamage: 85,          // a player boat has 100 hp: a mine almost destroys it
   mineTtlMs: 30000,
   mineArmMs: 900,
-  mineTriggerR: 42,
+  mineTriggerR: 64,        // a boat this close sets a mine off
+  mineBlastR: 125,         // everything inside this radius is hit (less at the edge)
   mineDropBack: 72,        // dropped this far behind the boat
   mineDropCdMs: 1200,
-  minePacks: 7,            // mine pick-ups floating in the open sea
-  minePackRespawnMs: 25000,
+  minePacks: 20,            // mine pick-ups floating in the open sea
+  minePackRespawnMs: 12000,
+  npcRespawnMs: 14000,     // a destroyed NPC boat is replaced after this long (the sea is never left empty)
   cannonCooldownMs: 800,
   wildlife: 8,
   islets: 7,
@@ -33,13 +35,13 @@ const CFG = {
   npcBoatHp: 40,
   wildHp: 20,
   attackRange: 85,
-  attackDamage: 28,
+  attackDamage: 10,        // proximity attack: weak (the cannon is the big gun)
   attackCooldownMs: 800,
   cannonSpeed: 560,        // cannonball speed (world units / s)
   cannonRange: 430,        // how far a ball flies before it splashes down
   cannonHitR: 34,          // a ball hits any boat / animal this close to its path
-  cannonDamage: 20,        // vs NPC boats and wildlife (NPC boat hp is 40)
-  cannonPlayerDamage: 14,  // vs other sailors
+  cannonDamage: 40,        // vs NPC boats and wildlife (NPC boat hp is 40)
+  cannonPlayerDamage: 32,  // vs other sailors
   npcShotDamage: 8,
   npcShotCdMs: 2300,
   npcShootRange: 340,
@@ -47,7 +49,7 @@ const CFG = {
   collectRange: 62,
   aoiR: 1000,
   pvpRange: 100,
-  pvpDamage: 22,
+  pvpDamage: 9,
   pvpCooldownMs: 900,
   pvpReward: 1,
   emojiTtlMs: 2500,
@@ -290,6 +292,10 @@ function ensureShared() {
     npcs: spawnNpcs(sharedSeed, CFG.npcBoats),
     wildlife: spawnWildlife(sharedSeed, CFG.wildlife),
     lastTreasureSpawn: Date.now(),
+    events: [
+      { id: 'battle', name: 'Battle Arena', emoji: '⚔️', x: 948, y: -649, r: 210, board: [] },
+      { id: 'lava', name: 'Lava Run', emoji: '💀', x: -1001, y: 748, r: 210, board: [] }
+    ],
     playerWrecks: [],
     shots: [],
     fx: [],
@@ -482,13 +488,26 @@ function tickShared(dt, now, playerPositions) {
   ensureShared();
   const W = SHARED;
   cleanWrecks(now);
-  if (now - (W.lastMinePack || 0) > CFG.minePackRespawnMs) { // mine pick-ups come back after a while
-    W.lastMinePack = now;
-    const t = W.minePacks.find((m) => m.taken && now - m.takenAt > CFG.minePackRespawnMs);
-    if (t) {
+  for (const t of W.minePacks) { // every taken mine pick-up comes back somewhere else after a while
+    if (t.taken && now - t.takenAt > CFG.minePackRespawnMs) {
       const a = Math.random() * Math.PI * 2, d = CFG.homeR + 200 + Math.random() * (CFG.worldR - CFG.homeR - 260);
       t.x = Math.cos(a) * d; t.y = Math.sin(a) * d; t.taken = false;
     }
+  }
+  for (const n of W.npcs) { // destroyed NPC boats are replaced, out of sight of every sailor, so the sea always has traffic
+    if (n.alive || now - (n.diedAt || 0) < CFG.npcRespawnMs) continue;
+    let x = 0, y = 0;
+    for (let tries = 0; tries < 20; tries++) {
+      const a = Math.random() * Math.PI * 2, d = CFG.homeR + 300 + Math.random() * (CFG.worldR - CFG.homeR - 350);
+      x = Math.cos(a) * d; y = Math.sin(a) * d;
+      if (!playerPositions.some((pp) => Math.hypot(pp.x - x, pp.y - y) < 750)) break;
+    }
+    const f = Math.random() * Math.PI * 2;
+    Object.assign(n, {
+      x, y, vx: Math.cos(f) * CFG.npcSpeed * 0.4, vy: Math.sin(f) * CFG.npcSpeed * 0.4, facing: f,
+      hp: CFG.npcBoatHp, maxHp: CFG.npcBoatHp, alive: true, loot: Math.random() < 0.5 ? 1 : 0,
+      aggro: Math.random() < CFG.npcAggroShare, fleeUntil: 0, shotAt: 0, contactAt: 0, diedAt: 0
+    });
   }
   for (const n of W.npcs) {
     if (!n.alive) continue;
@@ -744,36 +763,38 @@ function tickMines(now, sess) {
   const W = SHARED;
   W.mines = W.mines.filter((m) => now - m.at < CFG.mineTtlMs);
   const keep = [];
+  const falloff = (d) => (d <= CFG.mineTriggerR ? 1 : Math.max(0.35, 1 - 0.45 * (d - CFG.mineTriggerR) / Math.max(1, CFG.mineBlastR - CFG.mineTriggerR)));
   for (const m of W.mines) {
-    let boom = false;
+    let trig = false;
     if (now - m.at >= CFG.mineArmMs) {
-      for (const [uid, slot] of sess) {
+      for (const [, slot] of sess) {
         const ps = slot && slot.session;
-        if (!ps || ps.status !== 'sailing' || !ps.player.alive) continue;
-        const pl = ps.player;
-        if (Math.hypot(pl.x - m.x, pl.y - m.y) > CFG.boatRadius + 14) continue;
-        pl.hp -= CFG.mineDamage;
-        ps.events.push({ t: 'mine_hit', by: m.ownerName, hp: pl.hp, at: now });
-        if (pl.hp <= 0) { pl.hp = 0; pl.alive = false; pl.sunkBy = uid === m.owner ? null : m.ownerName; }
-        boom = true;
-        break;
+        if (ps && ps.status === 'sailing' && !ps.arena && ps.player.alive && Math.hypot(ps.player.x - m.x, ps.player.y - m.y) <= CFG.mineTriggerR) { trig = true; break; }
       }
-      if (!boom) {
-        for (const e of [...W.npcs, ...W.wildlife]) {
-          if (!e.alive || Math.hypot(e.x - m.x, e.y - m.y) > CFG.boatRadius + 14) continue;
-          e.hp -= CFG.mineDamage;
-          if (e.hp <= 0) {
-            e.alive = false; e.hp = 0; e.diedAt = now;
-            const o = sess.get(m.owner);
-            if (o && o.session) o.session.events.push({ t: 'kill', id: e.id, kind: e.kind, loot: e.loot | 0, at: now });
-          }
-          boom = true;
-          break;
-        }
+      if (!trig) for (const e of W.npcs) if (e.alive && Math.hypot(e.x - m.x, e.y - m.y) <= CFG.mineTriggerR) { trig = true; break; }
+    }
+    if (!trig) { keep.push(m); continue; }
+    W.fx.push({ x: m.x, y: m.y, k: 'boom', at: now });
+    for (const [uid, slot] of sess) { // blast: everything inside the radius is hurt, a little less towards the edge
+      const ps = slot && slot.session;
+      if (!ps || ps.status !== 'sailing' || ps.arena || !ps.player.alive) continue;
+      const pl = ps.player, d = Math.hypot(pl.x - m.x, pl.y - m.y);
+      if (d > CFG.mineBlastR) continue;
+      pl.hp -= CFG.mineDamage * falloff(d);
+      ps.events.push({ t: 'mine_hit', by: m.ownerName, hp: pl.hp, at: now });
+      if (pl.hp <= 0) { pl.hp = 0; pl.alive = false; pl.sunkBy = uid === m.owner ? null : m.ownerName; }
+    }
+    for (const e of [...W.npcs, ...W.wildlife]) {
+      if (!e.alive) continue;
+      const d = Math.hypot(e.x - m.x, e.y - m.y);
+      if (d > CFG.mineBlastR) continue;
+      e.hp -= CFG.mineDamage * falloff(d);
+      if (e.hp <= 0) {
+        e.alive = false; e.hp = 0; e.diedAt = now;
+        const o = sess.get(m.owner);
+        if (o && o.session) o.session.events.push({ t: 'kill', id: e.id, kind: e.kind, loot: e.loot | 0, at: now });
       }
     }
-    if (boom) W.fx.push({ x: m.x, y: m.y, k: 'boom', at: now });
-    else keep.push(m);
   }
   W.mines = keep;
 }
@@ -841,7 +862,7 @@ function tickShots(dt, now, sess) {
     if (!used) {
       for (const [uid, slot] of sess) {
         const ps = slot && slot.session;
-        if (!ps || ps.status !== 'sailing' || !ps.player.alive || uid === s.owner) continue;
+        if (!ps || ps.status !== 'sailing' || ps.arena || !ps.player.alive || uid === s.owner) continue;
         if (!s.npc && sameTeam(s.owner, uid)) continue;
         const pl = ps.player;
         if (Math.hypot(pl.x - s.x, pl.y - s.y) > CFG.boatRadius + 12) continue;
@@ -1146,6 +1167,9 @@ function view(session, opts) {
       speed: CFG.speed,
       attackRange: CFG.attackRange,
       attackCooldownMs: CFG.attackCooldownMs,
+      cannonCooldownMs: CFG.cannonCooldownMs,
+      cannonSpeed: CFG.cannonSpeed,
+      cannonRange: CFG.cannonRange,
       pvpCooldownMs: CFG.pvpCooldownMs,
       pvpRange: CFG.pvpRange,
       regenSeconds: CFG.regenSeconds,
@@ -1337,6 +1361,42 @@ function loadRaceBoards(rows) {
   }
 }
 
+// ---- sea events (Battle Arena, Lava Run): circles in the sea; each player then plays in a PERSONAL arena (see arena.js).
+// Boards keep the best SCORE per player (higher is better), saved through the same hook idea as the race boards.
+let eventSaver = null;
+function setEventSaver(fn) { eventSaver = typeof fn === 'function' ? fn : null; }
+function loadEventBoards(rows) {
+  ensureShared();
+  for (const row of rows || []) {
+    const ev = SHARED.events.find((e) => e.id === row.eventId);
+    if (!ev || !row.uid || !(row.score > 0)) continue;
+    const i = ev.board.findIndex((b) => b.uid === row.uid);
+    if (i >= 0) { if (row.score > ev.board[i].score) ev.board[i] = { uid: row.uid, name: row.name, score: row.score }; }
+    else ev.board.push({ uid: row.uid, name: row.name, score: row.score });
+  }
+  for (const ev of SHARED.events) { ev.board.sort((a, b) => b.score - a.score); if (ev.board.length > 30) ev.board.length = 30; }
+}
+function eventById(id) { ensureShared(); return SHARED.events.find((e) => e.id === id) || null; }
+function eventRecord(eventId, uid, name, score) {
+  const ev = eventById(eventId);
+  if (!ev || !(score > 0)) return { best: 0, rank: 0, improved: false };
+  const i = ev.board.findIndex((b) => b.uid === uid);
+  let improved = false;
+  if (i >= 0) { if (score > ev.board[i].score) { ev.board[i] = { uid, name, score }; improved = true; } }
+  else { ev.board.push({ uid, name, score }); improved = true; }
+  ev.board.sort((a, b) => b.score - a.score);
+  if (ev.board.length > 30) ev.board.length = 30;
+  if (improved && eventSaver) { try { eventSaver({ eventId, uid, name, score }); } catch (e) { /* never break the loop */ } }
+  const k = ev.board.findIndex((b) => b.uid === uid);
+  return { best: k >= 0 ? ev.board[k].score : score, rank: k + 1, improved };
+}
+function eventsNear(x, y) {
+  ensureShared();
+  return SHARED.events
+    .filter((e) => Math.hypot(e.x - x, e.y - y) <= CFG.aoiR + e.r)
+    .map((e) => ({ id: e.id, name: e.name, emoji: e.emoji, x: e.x, y: e.y, r: e.r, board: e.board.slice(0, 20).map((b) => ({ name: b.name, score: b.score })) }));
+}
+
 function raceJoin(uid, name, player, raceId) {
   ensureShared();
   const race = (SHARED.races || []).find((r) => r.id === raceId);
@@ -1463,6 +1523,7 @@ function viewWithOthers(session, others, now, opts) {
   v.others = others || [];
   const p = session.player;
   v.races = racesNear(p.x, p.y);
+  v.events = eventsNear(p.x, p.y);
   v.team = teamInfo(session.uid);
   v.selfUid = session.uid;
   // pending invite for this player
@@ -1503,6 +1564,7 @@ function viewWithOthers(session, others, now, opts) {
 }
 
 module.exports = {
+  _x: { steerNpc, resolveBoatBoat, resolveCircle, r1, r2, rng },
   CFG,
   EMOJIS,
   createSession,
@@ -1534,6 +1596,10 @@ module.exports = {
   ensureShared,
   resetSharedForTests,
   setBoardSaver,
+  setEventSaver,
+  loadEventBoards,
+  eventById,
+  eventRecord,
   loadRaceBoards,
   sameTeam,
   getTeamFor,
