@@ -25,13 +25,23 @@ function seaSlotFor(uid,s){
   const slot=seaSessions.get(uid);if(!slot)return null;
   if(slot.sockId!==s.id){slot.sockId=s.id;slot.dropAt=0}
   return slot}
-// full=true -> includes the static world (islets, cfg). Sockets that did not announce proto>=2 always get full snapshots.
+// full=true -> includes the static world (islets, cfg, mp). Prefer slim packs; full only on demand / periodically.
+// Proto < 2 clients always get full (legacy). forceFull is set after arena exit so the open-sea world reappears.
+const FULL_EVERY_MS = 5000;
 function seaPackFor(uid,slot,now,voyagers,full){
   const sess=slot.session,t=now||Date.now();
-  if(sess.arena){const f=!!full||(slot.proto|0)<2||slot.forceFull;slot.forceFull=false;return Arena.view(sess,t,{full:f,proto:SEA_PROTO})}
-  if(slot.forceFull){full=true;slot.forceFull=false} // first snapshot after an event arena: bring the sea world back
+  const wantFull = !!full || (slot.proto|0)<2 || !!slot.forceFull || !slot.lastFullAt || (t - slot.lastFullAt > FULL_EVERY_MS);
+  if(sess.arena){
+    // Arena snapshots are already small; only force full when the caller explicitly asked or on first post-enter.
+    const f = !!full || (slot.proto|0)<2 || !!slot.forceFull;
+    if(f){slot.forceFull=false;slot.lastFullAt=t}
+    return Arena.view(sess,t,{full:f,proto:SEA_PROTO});
+  }
+  if(slot.forceFull){slot.forceFull=false}
+  if(wantFull)slot.lastFullAt=t;
   const others=Sea.othersView(uid,sess.player.x,sess.player.y,voyagers||seaVoyagerList(),t);
-  return Sea.viewWithOthers(sess,others,t,{full:!!full||(slot.proto|0)<2,proto:SEA_PROTO})}
+  return Sea.viewWithOthers(sess,others,t,{full:wantFull,proto:SEA_PROTO});
+}
 function seaEmitTo(uid,event,payload){
   const slot=seaSessions.get(uid);if(!slot||!slot.sockId)return;
   try{const sock=io.sockets.sockets.get(slot.sockId);if(sock)sock.emit(event,payload)}catch(e){}}
@@ -290,7 +300,7 @@ io.on('connection',s=>{
     Sea.setIntent(slot.session,mx,my,Date.now())});
   s.on('sea:event',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!d||typeof d!=='object'||!lim('seaUi',8,3))return reply({ok:false,err:'busy'});
+    if(!d||typeof d!=='object'||!lim('seaUi',12,5))return reply({ok:false,err:'busy'});
     const slot=seaSlotFor(identUid,s);if(!slot||!slot.session||slot.session.status!=='sailing')return reply({ok:false,err:'no_session'});
     const now=Date.now(),sess=slot.session,p=sess.player;
     if(d.op==='join'){
@@ -301,7 +311,8 @@ io.on('connection',s=>{
       if(Math.hypot(ev.x-p.x,ev.y-p.y)>ev.r)return reply({ok:false,err:'far'});
       try{Sea.raceAbandon(identUid)}catch(e){}
       try{const tl=Sea.teamLeave(identUid);if(tl&&tl.ok)for(const m of tl.members||[])seaEmitTo(m,'sea:team',{op:'left',uid:identUid,leader:tl.leader,members:tl.members,name:slot.name})}catch(e){} // teams do not follow you into a personal arena
-      Arena.start(sess,ev,now);slot.forceFull=true;
+      Arena.start(sess,ev,now);
+      // Arena.view already strips open-sea statics; no need for forceFull on join (cheaper ack = faster "Enter Event")
       return reply({ok:true,sea:seaPackFor(identUid,slot,now)})}
     if(d.op==='exit'){
       if(sess.arena)seaFinishArena(identUid,slot,now,'exit');
@@ -400,7 +411,7 @@ io.on('connection',s=>{
   // ---- racing ----
   s.on('sea:race',(d,cb)=>{const reply=typeof cb==='function'?cb:()=>{};
     if(!identUid)return reply({ok:false,err:'not_ready'});
-    if(!d||typeof d!=='object'||!lim('seaUi',8,3))return reply({ok:false,err:'busy'});
+    if(!d||typeof d!=='object'||!lim('seaUi',12,5))return reply({ok:false,err:'busy'});
     const slot=seaSlotFor(identUid,s);if(!slot)return reply({ok:false,err:'no_session'});
     const now=Date.now();
     if(d.op==='join'){
@@ -450,14 +461,17 @@ io.on('connection',s=>{
 {const step=1000/CFG.tick;let next=Date.now();(function loop(){const n=Date.now();rooms.forEach((r,c)=>{r.tick(n);if(!r.humans())rooms.delete(c)});next+=step;if(next<Date.now()-250)next=Date.now();setTimeout(loop,Math.max(1,next-Date.now()))})()}
 const PORT=process.env.PORT||3000;
 
-// Open Sea: ONE authoritative simulation clock on the server. State is pushed to every sailor ~15x/s.
+// Open Sea: ONE authoritative simulation clock on the server. State is pushed to every sailor ~10x/s.
+// Client already predicts + interpolates; 10 Hz is smooth and much kinder to free-tier CPU / bandwidth.
 // - the list of boats is built once per tick (not once per sailor)
 // - 'volatile' emits: if a phone's connection is backed up the stale snapshot is dropped instead of queued, so the picture
-//   jumps to the newest state when the network recovers rather than replaying old frames (this was the 'lag' on weak links)
+//   jumps to the newest state when the network recovers rather than replaying old frames
 // - snapshots that carry events (pickups, kills) are sent reliably
+// - full world (islets/cfg/mp) is only included periodically or after arena exit (see seaPackFor)
 {let last=Date.now(),lastClean=0;
+const SEA_TICK_MS=100;
 setInterval(()=>{
-  const now=Date.now(),dt=Math.min(0.1,Math.max(0.001,(now-last)/1000));last=now;
+  const now=Date.now(),dt=Math.min(0.12,Math.max(0.001,(now-last)/1000));last=now;
   const voy=seaVoyagerList();
   // shared world (NPCs, wildlife, collectables) ticks once; players chase nearest sailor
   const playerPositions=[];
@@ -502,7 +516,7 @@ setInterval(()=>{
     lastClean=now;
     for(const [u,v] of seaVitals)if(now-v.at>Sea.CFG.regenSeconds*1000+1000)seaVitals.delete(u);
     for(const [u,t] of seaCooldown)if(t<=now)seaCooldown.delete(u)}
-},66)}
+},SEA_TICK_MS)}
 
 srv.listen(PORT,()=>{console.log('Drowning Dash server on :'+PORT);board.init();island.init();raceStore.init().then(rows=>{Sea.loadRaceBoards(rows);if(rows.length)console.log('[race-board] restored',rows.length,'best times');return raceStore.initEvents()}).then(ev=>{Sea.loadEventBoards(ev||[])}).catch(e=>console.error('[race-board] init',e.message))}); // the game starts even if the database is down; the leaderboard just reports "unavailable"
 for(const sig of['SIGTERM','SIGINT'])process.on(sig,()=>{raceStore.flush().catch(()=>{});seaFlushAll().catch(()=>{}).finally(()=>board.close().finally(()=>process.exit(0)))}); // flush gems + queued scores on redeploy/restart
