@@ -1,7 +1,7 @@
 // Drowning Dash service worker: caches the static game shell only.
 // It NEVER touches /socket.io/ (live multiplayer), non-GET requests or other origins (analytics, ads, socket.io client CDN).
 // Bump VERSION whenever the shell changes so phones drop the old cache and pick up the new game.
-const VERSION='dd-v23',SHELL=['/','/index.html','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/apple-touch-icon.png','/island-view.js?v=4','/sea-view.js?v=16'];
+const VERSION='dd-v24',SHELL=['/','/index.html','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/apple-touch-icon.png','/island-view.js?v=4','/sea-view.js?v=16'];
 
 self.addEventListener('install',e=>{
   // one missing file must never stop the service worker (and so the install option) from activating
