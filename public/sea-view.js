@@ -39,8 +39,8 @@
   // arrival (Wi-Fi bursts, jitter) never shows up as stutter. The delay adapts to how regular the packets are.
   const hist=new Map();                   // key -> [{t,x,y,vx,vy,f}] newest last
   let lastArr=0,ivlEma=70,jitEma=10,interpDelay=140;
-  const TRAIL_MAX=48;
-  const TRAIL_MS=2400;
+  const TRAIL_MAX=26;
+  const TRAIL_MS=1700;
 
   // ---------- projection ----------
   function metrics(canvas){
@@ -81,7 +81,7 @@
   function setState(snap){
     if(!snap)return;
     // slim pushes leave out the static world: keep the last copy
-    if(target){if(!snap.islets&&target.islets)snap.islets=target.islets;if(!snap.cfg&&target.cfg)snap.cfg=target.cfg;if(!snap.mp&&target.mp)snap.mp=target.mp}
+    if(target){if(!snap.islets&&target.islets)snap.islets=target.islets;if(target.cfg)snap.cfg=snap.cfg?Object.assign({},target.cfg,snap.cfg):target.cfg;if(!snap.mp&&target.mp)snap.mp=target.mp}
     target=snap;lastStateAt=performance.now();
     {const now=lastStateAt;
       if(lastArr){const iv=Math.min(600,now-lastArr);jitEma+=(Math.abs(iv-ivlEma)-jitEma)*0.1;ivlEma+=(iv-ivlEma)*0.1;
@@ -108,8 +108,8 @@
   function pulse(){fxPulse=performance.now()}
   function setAim(on){aiming=!!on}
   function meleePulse(){meleeAt=performance.now()}
-  function localShot(){const p=disp.player;if(!p)return;const f=p.f||0,c=Math.cos(f),s=Math.sin(f),sp=(target&&target.cfg&&target.cfg.cannonSpeed)||560;
-    localShots.push({x:p.x+c*38,y:p.y+s*38,vx:c*sp,vy:s*sp,t0:performance.now()});if(localShots.length>4)localShots.shift()}
+  const LFW={x:-Math.SQRT1_2,y:-Math.SQRT1_2},LLT={x:Math.SQRT1_2,y:-Math.SQRT1_2},BOAT_R=28;
+  function localShot(){return}
   function popup(txt){const p=disp.player||(target&&target.player);if(!p)return;popups.push({x:p.x,y:p.y,txt,t0:performance.now()});if(popups.length>8)popups.shift()}
   function getHome(){return homeScr}
   function getChest(){return chestScr}
@@ -143,18 +143,23 @@
         p.vy=(p.vy||0)*Math.max(0,1-dt*1.8);
         p.x+=p.vx*dt;p.y+=p.vy*dt;
       }
-      // Soft reconciliation toward authoritative server position (never hard-snap unless huge error)
-      const sx=(s.player.x||0)+(s.player.vx||0)*ex;
-      const sy=(s.player.y||0)+(s.player.vy||0)*ex;
-      const err=Math.hypot(sx-p.x,sy-p.y);
-      if(err>280){p.x=sx;p.y=sy;p.vx=s.player.vx||0;p.vy=s.player.vy||0;p.f=s.player.facing||0}
-      else if(err>2){
-        // blend harder when far, almost ignore when close so local feel wins
-        const corr=err>80?0.18:err>30?0.08:0.03;
-        p.x+=(sx-p.x)*corr;p.y+=(sy-p.y)*corr;
-        // gently align velocity too
-        p.vx+=( (s.player.vx||0)-p.vx )*corr*0.5;
-        p.vy+=( (s.player.vy||0)-p.vy )*corr*0.5;
+      // Soft reconciliation toward the authoritative position. The prediction is naturally ahead of the (older) server
+      // state by about speed x latency, so errors inside a dead-zone are ignored (no tugging); only the excess is eased out,
+      // at a frame-rate independent rate.
+      const sx=(s.player.x||0)+(s.player.vx||0)*Math.min(0.25,age);
+      const sy=(s.player.y||0)+(s.player.vy||0)*Math.min(0.25,age);
+      const ex2=sx-p.x,ey2=sy-p.y,err=Math.hypot(ex2,ey2);
+      if(err>Math.max(320,localSpeed*1.2)){p.x=sx;p.y=sy;p.vx=s.player.vx||0;p.vy=s.player.vy||0;p.f=s.player.facing||0}
+      else{
+        const dz=Math.max(22,localSpeed*0.2);
+        if(err>dz){const kk=(1-Math.exp(-dt*(err>90?5:2.2)))*((err-dz)/err);p.x+=ex2*kk;p.y+=ey2*kk}
+      }
+      // arenas: walls are solid on the client too, so the boat never rubs through a bank and gets pulled back
+      if(s.scene==='lava'){
+        const fw=p.x*LFW.x+p.y*LFW.y,lt=p.x*LLT.x+p.y*LLT.y,lim=bankAt(fw,(s.arena&&s.arena.w)||230)-BOAT_R*1.1;
+        if(Math.abs(lt)>lim){const nl=Math.sign(lt)*lim;p.x=LFW.x*fw+LLT.x*nl;p.y=LFW.y*fw+LLT.y*nl;const vl=p.vx*LLT.x+p.vy*LLT.y;if(vl*Math.sign(lt)>0){p.vx-=LLT.x*vl;p.vy-=LLT.y*vl}}
+      }else if(s.scene==='battle'){
+        const rr=((s.arena&&s.arena.r)||520)-BOAT_R,d=Math.hypot(p.x,p.y);if(d>rr){p.x*=rr/d;p.y*=rr/d}
       }
       if(s.player.facing!=null&&!(imx||imy))p.f+=angDiff(p.f,s.player.facing)*Math.min(1,dt*8);
       p.init=true;
@@ -259,9 +264,9 @@
     g.strokeStyle='#ffd34d';g.lineWidth=2*k;g.beginPath();g.moveTo(x-9*k,y-8*k);g.lineTo(x+9*k,y-8*k);g.moveTo(x-9*k,y-3*k);g.lineTo(x+9*k,y-3*k);g.stroke();
     g.font=Math.round(15*k)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText('💣',x,y-22*k+Math.sin(t*3)*1.5*k);
     g.restore()}
-  function mineShape(g,x,y,k,alpha,bright){ // spiky sea mine
+  function mineShape(g,x,y,k,alpha,bright,hot){ // spiky sea mine
     g.save();g.globalAlpha=alpha;
-    const body=bright?'#2b3038':'#2f86ab',spike=bright?'#555e69':'#3b97bd',light=bright?'#ff5a3c':'#5bb5d6';
+    const body=hot?'#d81f12':bright?'#2b3038':'#2f86ab',spike=hot?'#ff5a3c':bright?'#555e69':'#3b97bd',light=hot?'#fff1b0':bright?'#ff5a3c':'#5bb5d6';
     g.strokeStyle=spike;g.lineWidth=2*k;g.lineCap='round';
     for(let i=0;i<8;i++){const a=i*Math.PI/4;g.beginPath();g.moveTo(x+Math.cos(a)*7*k,y+Math.sin(a)*4.2*k);g.lineTo(x+Math.cos(a)*11.5*k,y+Math.sin(a)*7*k);g.stroke()}
     g.fillStyle=body;g.beginPath();g.ellipse(x,y,8*k,5.4*k,0,0,6.283);g.fill();
@@ -327,7 +332,7 @@
       const fl=0.7+0.3*Math.sin(t*9+i);g.fillStyle='rgba(255,'+(140+60*fl|0)+',40,.95)';g.beginPath();g.ellipse(px,py-m.c*17,m.c*4.5*fl,m.c*7*fl,0,0,6.283);g.fill()}
   }
   function sceneLava(g,m,t,snap){
-    const A=snap.arena||{},RW=A.w||330,lavaF=A.lavaF==null?-400:A.lavaF,pl=disp.player||snap.player||{x:0,y:0};
+    const A=snap.arena||{},RW=A.w||230,lavaF=A.lavaF==null?-400:A.lavaF,pl=disp.player||snap.player||{x:0,y:0};
     const pf=pl.x*FWx+pl.y*FWy;
     const W=(f,l)=>P(FWx*f+LTx*l,FWy*f+LTy*l,m);
     const halfF=(m.h*0.62)/(0.7071*m.c),fMin=Math.floor((pf-halfF-260)/40)*40,fMax=pf+halfF+420,latMax=(m.w*0.62)/(1.4142*m.c)+260;
@@ -348,8 +353,11 @@
     for(let f=fMax;f>=fMin;f-=40){const q=W(f,bankAt(f,RW));g.lineTo(q[0],q[1])}
     g.closePath();const wg=g.createLinearGradient(0,0,0,m.h);wg.addColorStop(0,'#2f8fb0');wg.addColorStop(1,'#1c5f7c');g.fillStyle=wg;g.fill();
     g.strokeStyle='rgba(255,255,255,.2)';g.lineWidth=Math.max(1.5,m.c*1.6);g.lineCap='round';
-    for(let i=0;i<50;i++){const f=fMin+hsh(i,1,1)*(fMax-fMin),l=(hsh(i,2,2)*2-1)*(bankAt(f,RW)-30),q=W(f+((t*30+i*17)%60),l),w=14*m.c;
-      g.beginPath();g.moveTo(q[0]-w,q[1]);g.quadraticCurveTo(q[0],q[1]-w*0.3,q[0]+w,q[1]);g.stroke()}
+    // river texture: STATIC dashes pinned to world cells (nothing moves, so the sailing boat is the only motion on screen)
+    {const cell=120,c0=Math.floor(fMin/cell);g.beginPath();
+      for(let ci=c0;ci*cell<=fMax;ci++)for(let k=0;k<2;k++){const f=ci*cell+hsh(ci,k,1)*cell,l=(hsh(ci,k,2)*2-1)*(bankAt(f,RW)-40),q=W(f,l),w=14*m.c;
+        g.moveTo(q[0]-w,q[1]);g.quadraticCurveTo(q[0],q[1]-w*0.3,q[0]+w,q[1])}
+      g.stroke()}
     g.lineCap='butt';
     // start line
     if(0>=fMin&&0<=fMax){const a=W(0,-bankAt(0,RW)),b=W(0,bankAt(0,RW)),a2=W(30,-bankAt(0,RW)),b2=W(30,bankAt(0,RW));
@@ -432,8 +440,8 @@
       g.setTransform(dpr,0,0,dpr,0,0);
       stepEntities(dt);
       g.clearRect(0,0,m.w,m.h);
-      water(g,m,t);
       const scene=snap.scene||'';
+      if(scene!=='lava')water(g,m,t);
       if(scene==='lava')sceneLava(g,m,t,snap);else if(scene==='battle')sceneBattle(g,m,t,snap);
 
       // boat wake trails (behind everything else in the water) — wider layered foam
@@ -441,6 +449,7 @@
         g.lineCap='round';g.lineJoin='round';
         for(const arr of trails.values()){
           if(arr.length<2)continue;
+          {const le=arr[arr.length-1],lp=P(le.x,le.y,m);if(lp[0]<-200||lp[0]>m.w+200||lp[1]<-200||lp[1]>m.h+200)continue}
           for(let i=1;i<arr.length;i++){
             const a=arr[i-1],b=arr[i],age=(nowT-b.t)/TRAIL_MS;
             if(age>=1)continue;
@@ -523,7 +532,7 @@
       }
 
       // event circles (Battle Arena / Lava Run): step inside and tap Enter
-      if(!racing)for(const ev of(snap.events||[])){
+      if(!racing)for(const ev of(snap.arenas||[])){
         const ep=P(ev.x,ev.y,m),[erx,ery]=ER(ev.r||210,m),pu=0.55+0.45*Math.sin(t*3.6),hot=ev.id==='lava';
         g.save();
         g.strokeStyle=(hot?'rgba(255,120,30,':'rgba(255,70,70,')+(0.4+0.4*pu).toFixed(3)+')';g.lineWidth=Math.max(3,m.c*4);g.setLineDash([m.c*10,m.c*7]);
@@ -593,6 +602,12 @@
       for(const mn of(snap.mines||[]))list.push({d:mn.x+mn.y,f:()=>{ // dropped mines are sea-coloured: easy to miss, which is the point
         const p=P(mn.x,mn.y,m),k=m.c,age=mn.age+(nowMs-lastStateAt),fresh=Math.max(0,1-age/1400);
         const left=30000-age;if(left<=0)return;
+        const hot=mn.trig>=0,tAge=hot?mn.trig+(nowMs-lastStateAt):0;
+        if(hot){ // touched: bright red, pulsing, with a growing warning ring until it blasts
+          const pulse=0.5+0.5*Math.sin(tAge/45),[rx,ry]=ER(30+tAge*0.09,m);
+          g.save();g.globalAlpha=0.55+0.4*pulse;g.strokeStyle='#ff2a1a';g.lineWidth=3*k;g.beginPath();g.ellipse(p[0],p[1],rx,ry,0,0,6.283);g.stroke();
+          g.fillStyle='rgba(255,40,20,'+(0.12+0.18*pulse).toFixed(2)+')';g.fill();g.restore();
+          mineShape(g,p[0],p[1],k*(1.1+0.15*pulse),1,true,true);return}
         const blink=left<4000?(Math.sin(age/90)>0?0.2:0):0;
         mineShape(g,p[0],p[1]+Math.sin(t*1.6+mn.x)*1.2*k,k,Math.min(1,(mn.mine?0.5:0.34)+fresh*0.6+blink),false)}});
       const age0=(nowMs-lastStateAt)/1000;
@@ -602,14 +617,6 @@
         for(let i=3;i>=1;i--){const q=P(x-sh.vx*0.012*i,y-sh.vy*0.012*i,m);g.globalAlpha=0.18*(4-i);g.fillStyle='#eef2f6';g.beginPath();g.arc(q[0],q[1]-lift,(6.8-i*0.9)*k,0,6.283);g.fill()}
         g.globalAlpha=1;g.fillStyle=sh.npc?'#5a2a2a':'#20242b';g.beginPath();g.arc(p[0],p[1]-lift,7.6*k,0,6.283);g.fill();
         g.fillStyle='rgba(255,255,255,.55)';g.beginPath();g.arc(p[0]-2.2*k,p[1]-lift-2.4*k,2.3*k,0,6.283);g.fill()}});
-      if(localShots.length){
-        if((snap.shots||[]).some(s=>s.mine))localShots.length=0;                 // the server's ball has arrived: it takes over
-        for(const ls of localShots){const age=(nowMs-ls.t0)/1000;if(age>0.45)continue;list.push({d:ls.x+ls.y+(ls.vx+ls.vy)*age+0.5,f:()=>{
-          const x=ls.x+ls.vx*age,y=ls.y+ls.vy*age,p=P(x,y,m),k=m.c,lift=14*k;
-          g.fillStyle='rgba(6,32,48,.3)';g.beginPath();g.ellipse(p[0],p[1],8*k,3.8*k,0,0,6.283);g.fill();
-          g.fillStyle='#20242b';g.beginPath();g.arc(p[0],p[1]-lift,7.6*k,0,6.283);g.fill();
-          g.fillStyle='rgba(255,255,255,.55)';g.beginPath();g.arc(p[0]-2.2*k,p[1]-lift-2.4*k,2.3*k,0,6.283);g.fill()}})}
-      }
       for(const f of(snap.fx||[])){const a=(f.age+(nowMs-lastStateAt))/900;if(a>=1)continue;list.push({d:f.x+f.y+2,f:()=>{
         const p=P(f.x,f.y,m),k=m.c;g.globalAlpha=1-a;
         if(f.k==='boom'){const r0=(14+110*a)*k;g.fillStyle='#ff8a1f';g.beginPath();g.ellipse(p[0],p[1]-10*k,r0,r0*0.7,0,0,6.283);g.fill();g.fillStyle='#fff1b0';g.beginPath();g.ellipse(p[0],p[1]-10*k,r0*0.55,r0*0.38,0,0,6.283);g.fill();g.strokeStyle='rgba(255,255,255,.8)';g.lineWidth=3*k*(1-a);const[bx,by]=ER(20+105*a,m);g.beginPath();g.ellipse(p[0],p[1],bx,by,0,0,6.283);g.stroke()}
@@ -668,7 +675,7 @@
           if(cp){const cpP=P(cp.x,cp.y,m);pointer(cpP[0],cpP[1],'race',Math.hypot(cp.x-disp.player.x,cp.y-disp.player.y),'')}
         }else{
           for(const race of(snap.races||[])){const rp=P(race.x,race.y,m);pointer(rp[0],rp[1],'race',Math.hypot(race.x-disp.player.x,race.y-disp.player.y),'')}
-          for(const ev of(snap.events||[])){const ep=P(ev.x,ev.y,m);pointer(ep[0],ep[1],'race',Math.hypot(ev.x-disp.player.x,ev.y-disp.player.y),'',ev.emoji)}
+          for(const ev of(snap.arenas||[])){const ep=P(ev.x,ev.y,m);pointer(ep[0],ep[1],'race',Math.hypot(ev.x-disp.player.x,ev.y-disp.player.y),'',ev.emoji)}
         }
       }
     }catch(e){try{console.error('[SeaView]',e)}catch(x){}}
